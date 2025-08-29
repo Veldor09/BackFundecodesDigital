@@ -26,9 +26,9 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('docs', app, document);
 
-  // Puerto
+  // Puerto (usa .env o 4000 por defecto)
   const port = process.env.PORT ? Number(process.env.PORT) : 4000;
   await app.listen(port);
-  console.log(`🚀 API running on http://localhost:${port}  |  Swagger: /docs`);
+  console.log(`🚀 API running on http://localhost:${port} | Swagger: /docs`);
 }
 bootstrap();
