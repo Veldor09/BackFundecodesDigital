@@ -1,23 +1,45 @@
+// prisma/schema.prisma
+
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"      // Si luego usas MySQL, cambia aquí a "mysql"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
+enum ProjectStatus {
+  EN_PROCESO
+  FINALIZADO
+  PAUSADO
+}
+
 model Project {
-  id          String   @id @default(cuid())
+  id          String        @id @default(cuid())
   title       String
-  slug        String   @unique
+  slug        String        @unique
   summary     String?
   content     String?
   coverUrl    String?
-  published   Boolean  @default(false)
+
+  // Campos para filtros
+  category    String?
+  status      ProjectStatus @default(EN_PROCESO)
+  place       String?
+  area        String?
+
+  published   Boolean       @default(false)
   publishedAt DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Índices útiles para listados
+  @@index([updatedAt])
+  @@index([category])
+  @@index([status])
+  @@index([place])
+  @@index([area])
 }
 
 model News {
@@ -30,6 +52,9 @@ model News {
   publishedAt DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([updatedAt])
+  @@index([published])
 }
 
 model ContactMessage {
