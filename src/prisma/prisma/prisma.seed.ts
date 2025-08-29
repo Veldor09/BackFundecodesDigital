@@ -1,12 +1,10 @@
-// prisma/seed.ts
 import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
-  // Evitar duplicar si ya hay datos
-  const existing = await prisma.project.count();
-  if (existing > 0) {
-    console.log('Seed: ya existen proyectos, no se crean nuevos.');
+  const count = await prisma.project.count();
+  if (count > 0) {
+    console.log('Seed: ya hay proyectos, no se crean nuevos.');
     return;
   }
 
@@ -17,7 +15,7 @@ async function main() {
         slug: 'reforestacion-rio-verde',
         summary: 'Plantación de 500 árboles nativos',
         category: 'ambiental',
-        status: 'EN_PROCESO',
+        status: 'EN_PROCESO' as any,
         place: 'Nicoya',
         area: 'Conservación',
         published: true,
@@ -27,7 +25,7 @@ async function main() {
         slug: 'capacitacion-voluntarios-2025',
         summary: 'Formación básica y avanzada',
         category: 'social',
-        status: 'FINALIZADO',
+        status: 'FINALIZADO' as any,
         place: 'Santa Cruz',
         area: 'Educación',
         published: true,
@@ -37,7 +35,7 @@ async function main() {
         slug: 'monitoreo-calidad-agua',
         summary: 'Muestreo mensual y reporte abierto',
         category: 'ambiental',
-        status: 'EN_PROCESO',
+        status: 'EN_PROCESO' as any,
         place: 'Hojancha',
         area: 'Hídrica',
         published: false,
@@ -45,15 +43,12 @@ async function main() {
     ],
   });
 
-  console.log('Seed: proyectos de ejemplo creados.');
+  console.log('Seed: proyectos creados.');
 }
 
-main()
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
-  
+main().catch(e => {
+  console.error('Seed error:', e);
+  process.exit(1);
+}).finally(async () => {
+  await prisma.$disconnect();
+});
