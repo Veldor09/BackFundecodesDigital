@@ -6,3 +6,6 @@ export class CreateNewsDto {
   @IsOptional() @IsString() coverUrl?: string;
   @IsOptional() @IsBoolean() published?: boolean;
 }
+   
+
+
