@@ -1,5 +1,3 @@
-// prisma/schema.prisma
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -16,14 +14,13 @@ enum ProjectStatus {
 }
 
 model Project {
-  id          String        @id @default(cuid())
+  id          Int           @id @default(autoincrement())
   title       String
   slug        String        @unique
   summary     String?
   content     String?
   coverUrl    String?
 
-  // Campos para filtros
   category    String?
   status      ProjectStatus @default(EN_PROCESO)
   place       String?
@@ -33,17 +30,10 @@ model Project {
   publishedAt DateTime?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
-
-  // Índices útiles para listados
-  @@index([updatedAt])
-  @@index([category])
-  @@index([status])
-  @@index([place])
-  @@index([area])
 }
 
 model News {
-  id          String   @id @default(cuid())
+  id          Int      @id @default(autoincrement())
   title       String
   slug        String   @unique
   content     String?
@@ -52,13 +42,10 @@ model News {
   publishedAt DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-
-  @@index([updatedAt])
-  @@index([published])
 }
 
 model ContactMessage {
-  id        String   @id @default(cuid())
+  id        Int      @id @default(autoincrement())
   name      String
   email     String
   message   String

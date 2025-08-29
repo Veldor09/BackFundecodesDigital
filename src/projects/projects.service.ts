@@ -9,12 +9,11 @@ import { UpdateProjectDto } from './dto/update-project.dto';
 export class ProjectsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // Lista con filtros, paginación y orden por defecto (más recientes)
   async list(query: ListProjectsQuery) {
     const { q, category, status, place, area, page = 1, pageSize = 10, published } = query;
 
-    // Compatibilidad: usamos 'as any' para no depender del cliente generado aún
-    const where = {} as any;
+    // Si tu cliente Prisma ya refleja los campos, puedes usar ProjectWhereInput en vez de any.
+    const where: Prisma.ProjectWhereInput = {};
 
     if (q) {
       where.OR = [
@@ -23,9 +22,8 @@ export class ProjectsService {
         { content: { contains: q, mode: 'insensitive' } },
       ];
     }
-
     if (category) where.category = { contains: category, mode: 'insensitive' };
-    if (status)   where.status   = status; // luego lo tipamos con el enum generado
+    if (status)   (where as any).status = status; // cambia a Prisma.$Enums.ProjectStatus si tu cliente lo expone
     if (place)    where.place    = { contains: place, mode: 'insensitive' };
     if (area)     where.area     = { contains: area,  mode: 'insensitive' };
     if (published !== undefined) where.published = published;
@@ -41,26 +39,23 @@ export class ProjectsService {
     return { items, total, page, pageSize };
   }
 
-  // Detalle por slug
   async getBySlug(slug: string) {
     const found = await this.prisma.project.findUnique({ where: { slug } });
     if (!found) throw new NotFoundException('Proyecto no encontrado');
     return found;
   }
 
-  // Crear
   create(dto: CreateProjectDto) {
     return this.prisma.project.create({ data: dto as any });
   }
 
-  // Actualizar
-  async update(id: string, dto: UpdateProjectDto) {
+  // id: number en where (estricto y correcto)
+  async update(id: number, dto: UpdateProjectDto) {
     await this.prisma.project.findUniqueOrThrow({ where: { id } });
     return this.prisma.project.update({ where: { id }, data: dto as any });
   }
 
-  // Eliminar
-  async remove(id: string) {
+  async remove(id: number) {
     await this.prisma.project.findUniqueOrThrow({ where: { id } });
     await this.prisma.project.delete({ where: { id } });
     return { ok: true };

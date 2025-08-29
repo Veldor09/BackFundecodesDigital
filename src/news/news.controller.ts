@@ -34,3 +34,5 @@ export class NewsController {
     return this.service.remove(id);
   }
 }
+
+
