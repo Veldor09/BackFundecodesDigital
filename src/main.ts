@@ -11,7 +11,7 @@ async function bootstrap() {
     origin: ['http://localhost:3000'],
   });
 
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+ app.useGlobalPipes(new ValidationPipe({whitelist: true, transform: true, forbidNonWhitelisted: true,  transformOptions: { enableImplicitConversion: true }, }));
 
   const config = new DocumentBuilder()
     .setTitle('FUNDECODES API')

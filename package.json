@@ -26,30 +26,37 @@
     "prisma:push": "prisma db push",
     "prisma:studio": "prisma studio"
   },
-
-"dependencies": {
-  "@nestjs/common": "^11.0.1",
-  "@nestjs/config": "^4.0.2",
-  "@nestjs/core": "^11.0.1",
-  "@nestjs/platform-express": "^11.0.1",
-  "@nestjs/swagger": "^11.2.0",
-  "@prisma/client": "^6.15.0",
-  "class-transformer": "^0.5.1",
-  "class-validator": "^0.14.2",
-  "reflect-metadata": "^0.2.2",
-  "rxjs": "^7.8.1",
-  "swagger-ui-express": "^5.0.1"
-},
- 
+  "dependencies": {
+    "@nestjs/common": "^11.1.6",
+    "@nestjs/config": "^4.0.2",
+    "@nestjs/core": "^11.1.6",
+    "@nestjs/platform-express": "^11.1.6",
+    "@nestjs/swagger": "^11.2.0",
+    "@nestjs/typeorm": "^11.0.0",
+    "@prisma/client": "^6.15.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.2",
+    "mysql2": "^3.14.4",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "swagger-ui-express": "^5.0.1",
+    "typeorm": "^0.3.26"
+  },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^9.18.0",
     "@nestjs/cli": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
     "@nestjs/testing": "^11.0.1",
-    "@types/express": "^5.0.0",
+    "@types/body-parser": "^1.19.6",
+    "@types/express": "^5.0.3",
+    "@types/http-errors": "^2.0.5",
     "@types/jest": "^30.0.0",
-    "@types/node": "^22.10.7",
+    "@types/json-schema": "^7.0.15",
+    "@types/methods": "^1.1.4",
+    "@types/mime": "^3.0.4",
+    "@types/node": "^22.18.0",
+    "@types/qs": "^6.14.0",
     "@types/supertest": "^6.0.2",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
@@ -63,18 +70,25 @@
     "ts-jest": "^29.2.5",
     "ts-loader": "^9.5.2",
     "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
     "tsconfig-paths": "^4.2.0",
-    "typescript": "^5.7.3",
+    "typescript": "^5.9.2",
     "typescript-eslint": "^8.20.0"
   },
   "jest": {
-    "moduleFileExtensions": ["js", "json", "ts"],
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
-    "collectCoverageFrom": ["**/*.(t|j)s"],
+    "collectCoverageFrom": [
+      "**/*.(t|j)s"
+    ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
   }

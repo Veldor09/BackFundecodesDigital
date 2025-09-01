@@ -1,16 +1,43 @@
-import { IsBoolean, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsDefined, IsOptional, IsString, IsNotEmpty } from 'class-validator';
+import { Transform } from 'class-transformer';
+
+const trim = (v: any) => (typeof v === 'string' ? v.trim() : v);
 
 export class CreateProjectDto {
-  @IsString() title: string;
-  @IsString() slug: string;
+  @IsDefined({ message: 'title es requerido' })
+  @IsString()
+  @Transform(({ value }) => trim(value))
+  @IsNotEmpty({ message: 'title no puede estar vacío' })
+  title: string;
 
-  @IsOptional() @IsString() summary?: string;
+  // opcional: si no viene, se genera desde title + place
+  @IsOptional()
+  @IsString()
+  @Transform(({ value }) => trim(value))
+  slug?: string;
+
+  @IsOptional() @IsString() @Transform(({ value }) => trim(value)) summary?: string;
   @IsOptional() @IsString() content?: string;
-  @IsOptional() @IsString() coverUrl?: string;
+  @IsOptional() @IsString() @Transform(({ value }) => trim(value)) coverUrl?: string;
 
-  @IsOptional() @IsString() category?: string;
-  @IsOptional() @IsString() place?: string;
-  @IsOptional() @IsString() area?: string;
+  // NOT NULL
+  @IsDefined({ message: 'category es requerido' })
+  @IsString()
+  @Transform(({ value }) => trim(value))
+  @IsNotEmpty({ message: 'category no puede estar vacío' })
+  category: string;
+
+  @IsDefined({ message: 'place es requerido' })
+  @IsString()
+  @Transform(({ value }) => trim(value))
+  @IsNotEmpty({ message: 'place no puede estar vacío' })
+  place: string;
+
+  @IsDefined({ message: 'area es requerido' })
+  @IsString()
+  @Transform(({ value }) => trim(value))
+  @IsNotEmpty({ message: 'area no puede estar vacío' })
+  area: string;
 
   @IsOptional() @IsString() status?: 'EN_PROCESO' | 'FINALIZADO' | 'PAUSADO';
   @IsOptional() @IsBoolean() published?: boolean;
