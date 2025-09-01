@@ -21,15 +21,20 @@ model Project {
   content     String?
   coverUrl    String?
 
-  category    String?
+  // NOT NULL
+  category    String
+  place       String
+  area        String
+
   status      ProjectStatus @default(EN_PROCESO)
-  place       String?
-  area        String?
 
   published   Boolean       @default(false)
   publishedAt DateTime?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
+
+  /// combinación única solicitada
+  @@unique([title, place, area])
 }
 
 model News {

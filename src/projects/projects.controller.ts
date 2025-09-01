@@ -35,7 +35,6 @@ export class ProjectsController {
     return this.service.create(dto);
   }
 
-  // IDs numéricos con ParseIntPipe
   @Patch(':id')
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateProjectDto) {
     return this.service.update(id, dto);
@@ -46,5 +45,3 @@ export class ProjectsController {
     return this.service.remove(id);
   }
 }
-
-
