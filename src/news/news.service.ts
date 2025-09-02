@@ -23,13 +23,13 @@ export class NewsService {
 
   // ⬇️ Cambios clave: id: number en firma y en where
   update(id: number, data: Partial<CreateNewsDto>) {
-    return this.prisma.news.update({ where: { id }, data });
+    return this.prisma.news.update({ where: { id: Number(id) }, data });
   }
 
   // ⬇️ Cambios clave: id: number en firma y en where
   async remove(id: number) {
-    await this.prisma.news.findUniqueOrThrow({ where: { id } });
-    await this.prisma.news.delete({ where: { id } });
+    await this.prisma.news.findUniqueOrThrow({ where: { id: Number(id) } });
+    await this.prisma.news.delete({ where: { id: Number(id) } });
     return { ok: true };
   }
 }
