@@ -1,0 +1,27 @@
+// src/users/entities/user.entity.ts
+import { Column, Entity, OneToMany, Unique } from 'typeorm';
+import { BaseEntity } from '../../common/entities/base.entity';
+import { UserRole } from './user-role.entity';
+import { RefreshToken } from '../../auth/entities/refresh-token.entity';
+
+@Entity('users')
+@Unique(['email'])
+export class User extends BaseEntity {
+  @Column({ length: 120 })
+  fullName: string;
+
+  @Column({ length: 120 })
+  email: string;
+
+  @Column({ select: false })
+  passwordHash: string;
+
+  @Column({ default: true })
+  isActive: boolean;
+
+  @OneToMany(() => UserRole, ur => ur.user, { cascade: true })
+  userRoles: UserRole[];
+
+  @OneToMany(() => RefreshToken, t => t.user, { cascade: true })
+  refreshTokens: RefreshToken[];
+}
