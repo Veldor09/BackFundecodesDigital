@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './prisma/prisma.module';
-import { ProjectsModule } from './projects/projects.module';
+import { ProjectsModule } from './SistemaAdmin/projects/projects.module';
 import { NewsModule } from './news/news.module';
-import { ContactModule } from './contact/contact.module';
-import { VolunteersModule } from './volunteers/volunteers.module';
+import { ContactModule } from './PaginaInfo/contact/contact.module';
+import { VolunteersModule } from './PaginaInfo/volunteers/volunteers.module';
 
 @Module({
   imports: [
