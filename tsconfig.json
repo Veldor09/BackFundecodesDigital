@@ -11,8 +11,21 @@
     "useDefineForClassFields": false,
     "sourceMap": true,
     "outDir": "./dist",
-    "skipLibCheck": true
+
+    "baseUrl": "./",
+    "incremental": true,
+    "skipLibCheck": true,
+    "strictNullChecks": true,
+    "forceConsistentCasingInFileNames": true,
+    "noImplicitAny": false,
+    "strictBindCallApply": false,
+    "noFallthroughCasesInSwitch": false
+  }
+  
+
+   
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist", "test", "**/*.spec.ts"]
+
 }

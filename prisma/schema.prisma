@@ -1,0 +1,68 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProjectStatus {
+  EN_PROCESO
+  FINALIZADO
+  PAUSADO
+}
+
+model Project {
+  id          Int           @id @default(autoincrement())
+  title       String
+  slug        String        @unique
+  summary     String?
+  content     String?
+  coverUrl    String?
+
+  // NOT NULL
+  category    String
+  place       String
+  area        String
+
+  status      ProjectStatus @default(EN_PROCESO)
+
+  published   Boolean       @default(false)
+  publishedAt DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  /// combinación única solicitada
+  @@unique([title, place, area])
+}
+
+model News {
+  id          Int      @id @default(autoincrement())
+  title       String
+  slug        String   @unique
+  content     String?
+  coverUrl    String?
+  published   Boolean  @default(false)
+  publishedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ContactMessage {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String
+  message   String
+  createdAt DateTime @default(now())
+}
+
+model Volunteer {
+  id             Int      @id @default(autoincrement())
+  nombre         String
+  email          String
+  telefono       String
+  disponibilidad String
+  mensaje        String
+  createdAt      DateTime @default(now())
+}
