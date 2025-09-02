@@ -56,3 +56,13 @@ model ContactMessage {
   message   String
   createdAt DateTime @default(now())
 }
+
+model Volunteer {
+  id             Int      @id @default(autoincrement())
+  nombre         String
+  email          String
+  telefono       String
+  disponibilidad String
+  mensaje        String
+  createdAt      DateTime @default(now())
+}
