@@ -1,0 +1,26 @@
+// src/volunteers/entities/volunteer.entity.ts
+import { Column, Entity, OneToMany, Unique } from 'typeorm';
+import { BaseEntity } from '../../common/entities/base.entity';
+import { VolunteerApplication } from './volunteer-application.entity';
+
+@Entity('volunteers')
+@Unique(['email'])
+export class Volunteer extends BaseEntity {
+  @Column({ length: 120 })
+  fullName: string;
+
+  @Column({ length: 120 })
+  email: string;
+
+  @Column({ length: 30, nullable: true })
+  phone?: string;
+
+  @Column({ length: 200, nullable: true })
+  skills?: string; // tags simples separados por coma
+
+  @Column({ default: true })
+  isAvailable: boolean;
+
+  @OneToMany(() => VolunteerApplication, a => a.volunteer)
+  applications: VolunteerApplication[];
+}
