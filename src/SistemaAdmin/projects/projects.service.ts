@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ListProjectsQuery } from './dto/list-projects.query';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
+import { AddDocumentUrlDto } from './dto/add-document-url.dto';
 
 // Util mínimo por si el middleware no alcanzara a normalizar
 function slugify(input: string): string {
@@ -62,7 +63,7 @@ export class ProjectsService {
         skip,
         take,
         include: {
-          images: { orderBy: { order: 'asc' as const } },
+          images: { orderBy: { order: 'asc' as const } }, // ligero
         },
       }),
       this.prisma.project.count({ where }),
@@ -72,13 +73,14 @@ export class ProjectsService {
   }
 
   /**
-   * Devuelve un proyecto por slug con imágenes
+   * Devuelve un proyecto por slug con imágenes y documentos
    */
   async getBySlug(slug: string) {
     const found = await this.prisma.project.findUnique({
       where: { slug },
       include: {
-        images: { orderBy: { order: 'asc' as const } },
+        images:    { orderBy: { order: 'asc' as const } },
+        documents: { orderBy: { createdAt: 'asc' as const } },
       },
     });
     if (!found) throw new NotFoundException('Proyecto no encontrado');
@@ -86,7 +88,7 @@ export class ProjectsService {
   }
 
   /**
-   * Devuelve proyecto por id numérico o slug (auto-detección) con imágenes
+   * Devuelve proyecto por id numérico o slug (auto-detección) con imágenes y documentos
    */
   async findOne(idOrSlug: string) {
     const asNumber = Number(idOrSlug);
@@ -97,7 +99,8 @@ export class ProjectsService {
     const project = await this.prisma.project.findFirst({
       where,
       include: {
-        images: { orderBy: { order: 'asc' as const } },
+        images:    { orderBy: { order: 'asc' as const } },
+        documents: { orderBy: { createdAt: 'asc' as const } },
       },
     });
 
@@ -276,6 +279,31 @@ export class ProjectsService {
         url,
         alt: payload.alt,
         order: Number.isFinite(payload.order) ? payload.order : 0,
+      },
+    });
+
+    return created;
+  }
+
+  /**
+   * Agrega un documento (por URL) al proyecto
+   */
+  async addDocument(projectId: number, body: AddDocumentUrlDto) {
+    await this.prisma.project.findUniqueOrThrow({ where: { id: projectId } });
+
+    const url = (body.url ?? '').trim();
+    const name = (body.name ?? '').trim();
+    const mimeType = (body.mimeType ?? '').trim() || null;
+
+    if (!url) throw new BadRequestException('url es requerido');
+    if (!name) throw new BadRequestException('name es requerido');
+
+    const created = await this.prisma.projectDocument.create({
+      data: {
+        projectId,
+        url,
+        name,
+        mimeType,
       },
     });
 
