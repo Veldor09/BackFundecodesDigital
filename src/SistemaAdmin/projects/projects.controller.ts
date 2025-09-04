@@ -21,14 +21,14 @@ import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { ListProjectsQuery } from './dto/list-projects.query';
 import { AddImageUrlDto } from './dto/add-image-url.dto';
+import { AddDocumentUrlDto } from './dto/add-document-url.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
 import * as fs from 'fs';
 
-// ✅ Helper para normalizar enlaces de Google Drive
+// Helper para normalizar enlaces de Google Drive
 function normalizeDriveUrl(url: string): string {
-  // https://drive.google.com/file/d/FILE_ID/view?... -> https://drive.google.com/uc?id=FILE_ID
   const m = url?.match(/\/file\/d\/([^/]+)\//);
   if (m?.[1]) return `https://drive.google.com/uc?id=${m[1]}`;
   return url;
@@ -45,7 +45,7 @@ export class ProjectsController {
     return this.service.list(query);
   }
 
-  // -------------------- DETALLE con caché + ETag --------------------
+  // -------------------- DETALLE con caché HTTP + ETag --------------------
   @ApiQuery({
     name: 'ttl',
     required: false,
@@ -81,7 +81,7 @@ export class ProjectsController {
     return this.service.create(dto);
   }
 
-   // // -------------------- SUBIR IMAGEN (archivo local, opcional) --------------------
+  // // -------------------- SUBIR IMAGEN (archivo local, opcional) --------------------
   // @Post(':id/upload-image')
   // @ApiConsumes('multipart/form-data')
   // @ApiBody({
@@ -130,12 +130,7 @@ export class ProjectsController {
   //   const parsedOrder = Number(order);
   //   const safeOrder = Number.isFinite(parsedOrder) ? parsedOrder : 0;
   //   const publicUrl = `/uploads/projects/${file.filename}`;
-
-  //   return this.service.addImage(id, {
-  //     url: publicUrl,
-  //     alt: (alt ?? '').trim() || null,
-  //     order: safeOrder,
-  //   });
+  //   return this.service.addImage(id, { url: publicUrl, alt: (alt ?? '').trim() || null, order: safeOrder });
   // }
 
   // -------------------- AGREGAR IMAGEN POR URL (Drive/CDN) --------------------
@@ -148,23 +143,34 @@ export class ProjectsController {
     @Param('id', ParseIntPipe) id: number,
     @Body() body: AddImageUrlDto,
   ) {
-    // ✅ Validación mínima
     if (!body?.url) throw new BadRequestException('url es requerido');
 
-    // ✅ Normaliza enlaces de Google Drive si vienen en formato /file/d/.../view
     const normalized = normalizeDriveUrl(body.url);
-
-    // ✅ order puede llegar como string -> a número
     const rawOrder = (body as any).order;
     const parsedOrder = typeof rawOrder === 'number' ? rawOrder : Number(rawOrder);
     const safeOrder = Number.isFinite(parsedOrder) ? parsedOrder : 0;
 
-    // ✅ Usa el método existente del service (no requiere addImageByUrl en el service)
     return this.service.addImage(id, {
       url: normalized,
       alt: (body.alt ?? '').trim() || null,
       order: safeOrder,
     });
+  }
+
+  // -------------------- AGREGAR DOCUMENTO POR URL --------------------
+  @Post(':id/add-document-url')
+  @ApiBody({
+    description: 'Agregar documento por URL al proyecto (PDF, DOCX, etc.)',
+    type: AddDocumentUrlDto,
+  })
+  async addDocumentByUrl(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: AddDocumentUrlDto,
+  ) {
+    if (!body?.url) throw new BadRequestException('url es requerido');
+    if (!body?.name) throw new BadRequestException('name es requerido');
+
+    return this.service.addDocument(id, body);
   }
 
   // -------------------- ACTUALIZAR --------------------
