@@ -1,11 +1,13 @@
+// src/SistemaAdmin/projects/projects.service.ts
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ListProjectsQuery } from './dto/list-projects.query';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 
+// Util mínimo por si el middleware no alcanzara a normalizar
 function slugify(input: string): string {
-  return input
+  return (input ?? '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
@@ -14,45 +16,99 @@ function slugify(input: string): string {
     .replace(/-{2,}/g, '-');
 }
 
+function isFiniteNumber(n: unknown): n is number {
+  return typeof n === 'number' && Number.isFinite(n);
+}
+
 @Injectable()
 export class ProjectsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Lista con filtros y paginación (incluye imágenes ordenadas)
+   */
   async list(query: ListProjectsQuery) {
-    const { q, category, status, place, area, page = 1, pageSize = 10, published } = query;
+    let { q, category, status, place, area, page = 1, pageSize = 10, published } = query;
+
+    // Sanitizar paginación
+    page = isFiniteNumber(+page) && +page > 0 ? +page : 1;
+    pageSize = isFiniteNumber(+pageSize) && +pageSize > 0 ? Math.min(+pageSize, 100) : 10;
 
     const where: Record<string, any> = {};
 
-    if (q) {
+    if (q?.trim()) {
       where.OR = [
-        { title: { contains: q, mode: 'insensitive' } },
+        { title:   { contains: q, mode: 'insensitive' } },
         { summary: { contains: q, mode: 'insensitive' } },
         { content: { contains: q, mode: 'insensitive' } },
+        { place:   { contains: q, mode: 'insensitive' } },
+        { area:    { contains: q, mode: 'insensitive' } },
+        { category:{ contains: q, mode: 'insensitive' } },
       ];
     }
-    if (category) where.category = { contains: category, mode: 'insensitive' };
-    if (status) where.status = status;
-    if (place) where.place = { contains: place, mode: 'insensitive' };
-    if (area) where.area = { contains: area, mode: 'insensitive' };
+    if (category?.trim()) where.category = { contains: category.trim(), mode: 'insensitive' };
+    if (status) where.status = status; // validado por DTO si usas class-validator con enum
+    if (place?.trim()) where.place = { contains: place.trim(), mode: 'insensitive' };
+    if (area?.trim()) where.area = { contains: area.trim(), mode: 'insensitive' };
     if (published !== undefined) where.published = published;
 
     const skip = (page - 1) * pageSize;
     const take = pageSize;
 
     const [items, total] = await Promise.all([
-      this.prisma.project.findMany({ where, orderBy: { updatedAt: 'desc' }, skip, take }),
+      this.prisma.project.findMany({
+        where,
+        orderBy: { updatedAt: 'desc' },
+        skip,
+        take,
+        include: {
+          images: { orderBy: { order: 'asc' as const } },
+        },
+      }),
       this.prisma.project.count({ where }),
     ]);
 
     return { items, total, page, pageSize };
   }
 
+  /**
+   * Devuelve un proyecto por slug con imágenes
+   */
   async getBySlug(slug: string) {
-    const found = await this.prisma.project.findUnique({ where: { slug } });
+    const found = await this.prisma.project.findUnique({
+      where: { slug },
+      include: {
+        images: { orderBy: { order: 'asc' as const } },
+      },
+    });
     if (!found) throw new NotFoundException('Proyecto no encontrado');
     return found;
   }
 
+  /**
+   * Devuelve proyecto por id numérico o slug (auto-detección) con imágenes
+   */
+  async findOne(idOrSlug: string) {
+    const asNumber = Number(idOrSlug);
+    const where = Number.isInteger(asNumber) && asNumber > 0
+      ? { id: asNumber }
+      : { slug: idOrSlug };
+
+    const project = await this.prisma.project.findFirst({
+      where,
+      include: {
+        images: { orderBy: { order: 'asc' as const } },
+      },
+    });
+
+    if (!project) throw new NotFoundException('Proyecto no encontrado');
+    return project;
+  }
+
+  /**
+   * Crea proyecto respetando unicidad (title+place+area) y slug único.
+   * Si published=true y no hay publishedAt, lo asigna ahora.
+   */
   async create(dto: CreateProjectDto) {
     const title = dto.title?.trim();
     if (!title) throw new BadRequestException('El campo "title" es requerido y no puede estar vacío.');
@@ -68,6 +124,7 @@ export class ProjectsService {
     // Verificar duplicado por combinación title + place + area
     const dupCombo = await this.prisma.project.findFirst({
       where: { title, place, area },
+      select: { id: true },
     });
     if (dupCombo) {
       throw new BadRequestException(
@@ -75,16 +132,22 @@ export class ProjectsService {
       );
     }
 
-    // slug = title + place
+    // slug = (dto.slug) || (title + place)
     const baseForSlug = dto.slug?.trim() || `${title}-${place}`;
     const slug = slugify(baseForSlug);
     if (!slug) throw new BadRequestException('No fue posible generar un slug válido.');
 
     // validar unicidad de slug
-    const dupSlug = await this.prisma.project.findUnique({ where: { slug } });
+    const dupSlug = await this.prisma.project.findUnique({ where: { slug }, select: { id: true } });
     if (dupSlug) throw new BadRequestException(`El slug "${slug}" ya existe.`);
 
-    return this.prisma.project.create({
+    // Manejo de publishedAt (DTO trae string ISO opcional -> convertir a Date)
+    const published = dto.published ?? false;
+    const publishedAt = published
+      ? (dto.publishedAt ? new Date(dto.publishedAt) : new Date())
+      : null;
+
+    const created = await this.prisma.project.create({
       data: {
         ...dto,
         title,
@@ -92,19 +155,26 @@ export class ProjectsService {
         category,
         place,
         area,
+        published,
+        publishedAt,
       } as any,
     });
+
+    return created;
   }
 
+  /**
+   * Actualiza proyecto con validaciones y manejo de slug/publishedAt
+   */
   async update(id: number, dto: UpdateProjectDto) {
     const existing = await this.prisma.project.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Proyecto no encontrado');
 
-    // mantener valores actuales
-    let nextTitle = existing.title;
+    // Mantener valores actuales
+    let nextTitle    = existing.title;
     let nextCategory = existing.category;
-    let nextPlace = existing.place;
-    let nextArea = existing.area;
+    let nextPlace    = existing.place;
+    let nextArea     = existing.area;
 
     if (dto.title !== undefined) {
       const t = dto.title.trim();
@@ -129,12 +199,8 @@ export class ProjectsService {
 
     // Verificar duplicado por combinación title + place + area (excluyendo este id)
     const dupCombo = await this.prisma.project.findFirst({
-      where: {
-        title: nextTitle,
-        place: nextPlace,
-        area: nextArea,
-        NOT: { id },
-      },
+      where: { title: nextTitle, place: nextPlace, area: nextArea, NOT: { id } },
+      select: { id: true },
     });
     if (dupCombo) {
       throw new BadRequestException(
@@ -152,25 +218,73 @@ export class ProjectsService {
     if (!nextSlug) throw new BadRequestException('No fue posible generar un slug válido.');
 
     if (nextSlug !== existing.slug) {
-      const dupSlug = await this.prisma.project.findUnique({ where: { slug: nextSlug } });
+      const dupSlug = await this.prisma.project.findUnique({ where: { slug: nextSlug }, select: { id: true } });
       if (dupSlug && dupSlug.id !== id) {
         throw new BadRequestException(`El slug "${nextSlug}" ya existe.`);
       }
     }
 
-    return this.prisma.project.update({
+    // Manejo published/publishedAt (DTO trae string ISO opcional -> convertir a Date)
+    let nextPublished   = existing.published;
+    let nextPublishedAt = existing.publishedAt;
+
+    if (dto.published !== undefined) {
+      nextPublished = dto.published;
+      if (dto.published === true && !existing.publishedAt) {
+        nextPublishedAt = dto.publishedAt ? new Date(dto.publishedAt) : new Date();
+      }
+      if (dto.published === false) {
+        nextPublishedAt = null;
+      }
+    }
+    if (dto.publishedAt !== undefined) {
+      nextPublishedAt = dto.publishedAt ? new Date(dto.publishedAt) : null;
+    }
+
+    const updated = await this.prisma.project.update({
       where: { id },
       data: {
         ...dto,
-        title: nextTitle,
-        slug: nextSlug,
+        title:    nextTitle,
+        slug:     nextSlug,
         category: nextCategory,
-        place: nextPlace,
-        area: nextArea,
+        place:    nextPlace,
+        area:     nextArea,
+        published:   nextPublished,
+        publishedAt: nextPublishedAt,
       } as any,
     });
+
+    return updated;
   }
 
+  /**
+   * Agrega una imagen al proyecto (usado por URL)
+   */
+  async addImage(
+    projectId: number,
+    payload: { url: string; alt: string | null; order: number },
+  ) {
+    await this.prisma.project.findUniqueOrThrow({ where: { id: projectId } });
+
+    const url = (payload.url ?? '').trim();
+    if (!url) throw new BadRequestException('url es requerido');
+
+    const created = await this.prisma.projectImage.create({
+      data: {
+        projectId,
+        url,
+        alt: payload.alt,
+        order: Number.isFinite(payload.order) ? payload.order : 0,
+      },
+    });
+
+    return created;
+  }
+
+  /**
+   * Elimina un proyecto. (Assets se eliminan por onDelete: Cascade del schema)
+   */
   async remove(id: number) {
     await this.prisma.project.findUniqueOrThrow({ where: { id } });
     await this.prisma.project.delete({ where: { id } });
