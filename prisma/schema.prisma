@@ -1,3 +1,4 @@
+// prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
 }
@@ -33,8 +34,27 @@ model Project {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
+  // Solo imágenes
+  images      ProjectImage[]
+
   /// combinación única solicitada
   @@unique([title, place, area])
+  @@index([status])
+  @@index([updatedAt])
+}
+
+model ProjectImage {
+  id         Int      @id @default(autoincrement())
+  projectId  Int
+  url        String
+  alt        String?
+  order      Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([projectId])
+  @@index([order])
 }
 
 model News {
