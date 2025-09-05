@@ -101,36 +101,33 @@ export class ProjectsController {
 
     return this.service.addImage(id, {
       url: normalized,
-      alt: body.alt?.trim() || undefined,
+      alt: (body.alt ?? '').trim() || undefined,
       order: safeOrder,
     });
   }
 
   // -------------------- AGREGAR DOCUMENTO POR URL --------------------
-@Post(':id/add-document-url')
-@ApiBody({
-  description: 'Agregar documento por URL al proyecto (PDF, DOCX, etc.)',
-  type: AddDocumentUrlDto,
-})
-async addDocumentByUrl(
-  @Param('id', ParseIntPipe) id: number,
-  @Body() body: AddDocumentUrlDto,
-) {
-  try {
-    if (!body?.url) throw new BadRequestException('url es requerido');
-    if (!body?.name) throw new BadRequestException('name es requerido');
+  @Post(':id/add-document-url')
+  @ApiBody({
+    description: 'Agregar documento por URL al proyecto (sin subir archivo)',
+    type: AddDocumentUrlDto,
+  })
+  async addDocumentByUrl(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: AddDocumentUrlDto,
+  ) {
+    try {
+      if (!body?.url) throw new BadRequestException('url es requerido');
+      if (!body?.name) throw new BadRequestException('name es requerido');
 
-    return await this.service.addDocument(id, {
-      url: body.url,
-      name: body.name,
-      mimeType: body.mimeType || 'application/octet-stream',
-      size: body.size || 0,
-    });
-  } catch (error) {
-    console.error('❌ Error en addDocumentByUrl:', error);
-    throw error;
+      console.log('📄 Documento recibido:', { url: body.url, name: body.name });
+
+      return await this.service.addDocument(id, body);
+    } catch (error) {
+      console.error('❌ Error en addDocumentByUrl:', error);
+      throw error;
+    }
   }
-}
 
   // -------------------- ACTUALIZAR --------------------
   @Patch(':id')

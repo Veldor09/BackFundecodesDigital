@@ -8,7 +8,7 @@ const trim = (v: any) => (typeof v === 'string' ? v.trim() : v);
 export class AddDocumentUrlDto {
   @IsString()
   @IsNotEmpty({ message: 'url es requerido' })
-  @IsUrl({}, { message: 'url debe ser un URL válido' })
+  //@IsUrl({}, { message: 'url debe ser un URL válido' })
   @Transform(({ value }) => trim(value))
   url!: string;
 
