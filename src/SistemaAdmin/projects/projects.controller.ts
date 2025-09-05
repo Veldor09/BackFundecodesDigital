@@ -14,8 +14,9 @@ import {
   UploadedFile,
   UseInterceptors,
   BadRequestException,
+  DefaultValuePipe,
 } from '@nestjs/common';
-import { ApiBody, ApiConsumes, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiConsumes, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { ProjectsService } from './projects.service';
 import { CreateProjectDto } from './dto/create-project.dto';
@@ -57,13 +58,12 @@ export class ProjectsController {
   @Get(':idOrSlug')
   async get(
     @Param('idOrSlug') idOrSlug: string,
-    @Query('ttl') ttl: string | undefined,
+    @Query('ttl', new DefaultValuePipe('60')) ttl: string,
     @Res() res: Response,
   ) {
     const data = await this.service.findOne(idOrSlug);
 
-    const parsed = Number(ttl);
-    const seconds = Number.isFinite(parsed) && parsed >= 0 ? parsed : 60;
+    const seconds = Math.max(0, Number.isFinite(+ttl) ? +ttl : 60);
     res.setHeader('Cache-Control', `public, max-age=${seconds}, stale-while-revalidate=120`);
 
     const etagBase = data.updatedAt ? new Date(data.updatedAt).toISOString() : '';
@@ -120,10 +120,10 @@ export class ProjectsController {
       if (!body?.url) throw new BadRequestException('url es requerido');
       if (!body?.name) throw new BadRequestException('name es requerido');
 
-      console.log('📄 Documento recibido:', { url: body.url, name: body.name });
-
       return await this.service.addDocument(id, body);
     } catch (error) {
+      // log visible en servidor
+      // eslint-disable-next-line no-console
       console.error('❌ Error en addDocumentByUrl:', error);
       throw error;
     }
@@ -141,7 +141,7 @@ export class ProjectsController {
     return this.service.remove(id);
   }
 
-  // ===================== DOCUMENTOS: NUEVOS ENDPOINTS =====================
+  // ===================== DOCUMENTOS: ENDPOINTS =====================
 
   /**
    * LISTAR documentos de un proyecto
@@ -181,6 +181,16 @@ export class ProjectsController {
       },
     }),
   )
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary' },
+      },
+      required: ['file'],
+    },
+  })
   async uploadProjectDocument(
     @Param('id', ParseIntPipe) id: number,
     @UploadedFile() file: Express.Multer.File,
@@ -190,15 +200,41 @@ export class ProjectsController {
   }
 
   /**
-   * ELIMINAR documento de un proyecto
-   * DELETE /projects/:id/documents
+   * ELIMINAR documento de un proyecto (✅ por ID — recomendado)
+   * DELETE /projects/:id/documents/:documentId
+   */
+  @Delete(':id/documents/:documentId')
+  @ApiParam({ name: 'id', type: Number, required: true, description: 'ID del proyecto' })
+  @ApiParam({ name: 'documentId', type: Number, required: true, description: 'ID del documento' })
+  async deleteProjectDocumentById(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('documentId', ParseIntPipe) documentId: number,
+  ) {
+    return this.service.removeDocumentById(id, documentId);
+  }
+
+  /**
+   * ELIMINAR documento de un proyecto (compat: por nombre/URL)
+   * DELETE /projects/:id/documents?name=<encoded>
+   * ó enviar body { "url": "..." } (se extrae el nombre)
    */
   @Delete(':id/documents')
-  async deleteProjectDocument(
+  @ApiQuery({
+    name: 'name',
+    required: false,
+    description: 'Nombre del archivo a eliminar (URL-encoded). Alternativa: enviar body {url}.',
+  })
+  async deleteProjectDocumentLegacy(
     @Param('id', ParseIntPipe) id: number,
-    @Body('url') url: string,
+    @Query('name') name?: string,
+    @Body('url') url?: string,
   ) {
-    if (!url) throw new BadRequestException('url es requerido en el body');
-    return this.service.removeDocument(id, url);
+    // Soporta ambos: ?name= y body.url para compatibilidad
+    const raw = name ?? url ?? '';
+    if (!raw) throw new BadRequestException('name (query) o url (body) es requerido');
+    // Normaliza: si viene una URL, extrae el nombre
+    const base = raw.includes('/') ? raw.split('/').pop() ?? '' : raw;
+    const decoded = decodeURIComponent(base);
+    return this.service.removeDocumentByName(id, decoded);
   }
 }
