@@ -1,4 +1,5 @@
 // src/SistemaAdmin/projects/projects.controller.ts
+
 import {
   Controller,
   Get,
@@ -81,58 +82,6 @@ export class ProjectsController {
     return this.service.create(dto);
   }
 
-  // // -------------------- SUBIR IMAGEN (archivo local, opcional) --------------------
-  // @Post(':id/upload-image')
-  // @ApiConsumes('multipart/form-data')
-  // @ApiBody({
-  //   description: 'Subir imagen del proyecto (archivo local)',
-  //   schema: {
-  //     type: 'object',
-  //     properties: {
-  //       file: { type: 'string', format: 'binary' },
-  //       alt: { type: 'string' },
-  //       order: { type: 'number', default: 0 },
-  //     },
-  //     required: ['file'],
-  //   },
-  // })
-  // @UseInterceptors(
-  //   FileInterceptor('file', {
-  //     storage: diskStorage({
-  //       destination: (req, file, cb) => {
-  //         const dest = join(process.cwd(), 'uploads', 'projects');
-  //         fs.mkdirSync(dest, { recursive: true });
-  //         cb(null, dest);
-  //       },
-  //       filename: (req, file, cb) => {
-  //         const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-  //         cb(null, unique + extname(file.originalname));
-  //       },
-  //     }),
-  //     limits: { fileSize: 10 * 1024 * 1024 },
-  //     fileFilter: (req, file, cb) => {
-  //       const allowed = ['.png', '.jpg', '.jpeg', '.webp', '.gif'];
-  //       const ext = extname(file.originalname).toLowerCase();
-  //       if (!allowed.includes(ext)) {
-  //         return cb(new BadRequestException('Formato no permitido'), false);
-  //       }
-  //       cb(null, true);
-  //     },
-  //   }),
-  // )
-  // async uploadImage(
-  //   @Param('id', ParseIntPipe) id: number,
-  //   @UploadedFile() file: Express.Multer.File,
-  //   @Query('alt') alt?: string,
-  //   @Query('order') order?: string,
-  // ) {
-  //   if (!file) throw new BadRequestException('Archivo requerido (file)');
-  //   const parsedOrder = Number(order);
-  //   const safeOrder = Number.isFinite(parsedOrder) ? parsedOrder : 0;
-  //   const publicUrl = `/uploads/projects/${file.filename}`;
-  //   return this.service.addImage(id, { url: publicUrl, alt: (alt ?? '').trim() || null, order: safeOrder });
-  // }
-
   // -------------------- AGREGAR IMAGEN POR URL (Drive/CDN) --------------------
   @Post(':id/add-image-url')
   @ApiBody({
@@ -152,26 +101,36 @@ export class ProjectsController {
 
     return this.service.addImage(id, {
       url: normalized,
-      alt: (body.alt ?? '').trim() || null,
+      alt: body.alt?.trim() || undefined,
       order: safeOrder,
     });
   }
 
   // -------------------- AGREGAR DOCUMENTO POR URL --------------------
-  @Post(':id/add-document-url')
-  @ApiBody({
-    description: 'Agregar documento por URL al proyecto (PDF, DOCX, etc.)',
-    type: AddDocumentUrlDto,
-  })
-  async addDocumentByUrl(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() body: AddDocumentUrlDto,
-  ) {
+@Post(':id/add-document-url')
+@ApiBody({
+  description: 'Agregar documento por URL al proyecto (PDF, DOCX, etc.)',
+  type: AddDocumentUrlDto,
+})
+async addDocumentByUrl(
+  @Param('id', ParseIntPipe) id: number,
+  @Body() body: AddDocumentUrlDto,
+) {
+  try {
     if (!body?.url) throw new BadRequestException('url es requerido');
     if (!body?.name) throw new BadRequestException('name es requerido');
 
-    return this.service.addDocument(id, body);
+    return await this.service.addDocument(id, {
+      url: body.url,
+      name: body.name,
+      mimeType: body.mimeType || 'application/octet-stream',
+      size: body.size || 0,
+    });
+  } catch (error) {
+    console.error('❌ Error en addDocumentByUrl:', error);
+    throw error;
   }
+}
 
   // -------------------- ACTUALIZAR --------------------
   @Patch(':id')
@@ -183,5 +142,66 @@ export class ProjectsController {
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.service.remove(id);
+  }
+
+  // ===================== DOCUMENTOS: NUEVOS ENDPOINTS =====================
+
+  /**
+   * LISTAR documentos de un proyecto
+   * GET /projects/:id/documents
+   */
+  @Get(':id/documents')
+  async getProjectDocuments(@Param('id', ParseIntPipe) id: number) {
+    return this.service.getProjectDocuments(id);
+  }
+
+  /**
+   * SUBIR documento (archivo local)
+   * POST /projects/:id/documents
+   */
+  @Post(':id/documents')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: (req, file, cb) => {
+          const dest = join(process.cwd(), 'uploads', 'projects', 'docs');
+          fs.mkdirSync(dest, { recursive: true });
+          cb(null, dest);
+        },
+        filename: (req, file, cb) => {
+          const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
+          cb(null, unique + extname(file.originalname));
+        },
+      }),
+      limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+      fileFilter: (req, file, cb) => {
+        const allowed = ['.pdf', '.doc', '.docx', '.txt', '.jpg', '.jpeg', '.png', '.gif'];
+        const ext = extname(file.originalname).toLowerCase();
+        if (!allowed.includes(ext)) {
+          return cb(new BadRequestException('Tipo de archivo no permitido'), false);
+        }
+        cb(null, true);
+      },
+    }),
+  )
+  async uploadProjectDocument(
+    @Param('id', ParseIntPipe) id: number,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('Archivo requerido (file)');
+    return this.service.uploadProjectDocument(id, file);
+  }
+
+  /**
+   * ELIMINAR documento de un proyecto
+   * DELETE /projects/:id/documents
+   */
+  @Delete(':id/documents')
+  async deleteProjectDocument(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('url') url: string,
+  ) {
+    if (!url) throw new BadRequestException('url es requerido en el body');
+    return this.service.removeDocument(id, url);
   }
 }
