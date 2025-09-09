@@ -1,8 +1,8 @@
 // src/users/entities/user-role.entity.ts
 import { Entity, ManyToOne, Unique } from 'typeorm';
-import { BaseEntity } from '../../common/entities/base.entity';
-import { User } from './user.entity';
-import { Role } from './role.entity';
+import { BaseEntity } from '../BaseEntity';
+import { User } from './User';
+import { Role } from './Role';
 
 @Entity('user_roles')
 @Unique(['user', 'role'])

@@ -1,7 +1,7 @@
 // src/users/entities/role.entity.ts
 import { Column, Entity, OneToMany, Unique } from 'typeorm';
-import { BaseEntity } from '../../common/entities/base.entity';
-import { UserRole } from './user-role.entity';
+import { BaseEntity } from '../BaseEntity';
+import { UserRole } from './UserRole';
 
 @Entity('roles')
 @Unique(['name'])

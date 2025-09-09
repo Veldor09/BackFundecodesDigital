@@ -1,9 +1,9 @@
 // src/projects/entities/project.entity.ts
 import { Column, Entity, OneToMany } from 'typeorm';
-import { BaseEntity } from '../../common/entities/base.entity';
-import { ProjectImage } from './project-image.entity';
-import { Comment } from '../../social/entities/comment.entity';
-import { VolunteerApplication } from '../../volunteers/entities/volunteer-application.entity';
+import { BaseEntity } from '../BaseEntity';
+import { ProjectImage } from './ProjectImage';
+import { Comment } from '../Comment/Comment';
+import { VolunteerApplication } from '../Voluntarees/VolunteerApplication';
 
 @Entity('projects')
 export class Project extends BaseEntity {

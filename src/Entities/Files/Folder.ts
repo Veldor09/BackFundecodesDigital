@@ -1,6 +1,6 @@
 // src/storage/entities/folder.entity.ts
 import { Column, Entity, ManyToOne, OneToMany } from 'typeorm';
-import { BaseEntity } from '../../common/entities/base.entity';
+import { BaseEntity } from '../BaseEntity';
 
 @Entity('folders')
 export class Folder extends BaseEntity {
