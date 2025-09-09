@@ -1,7 +1,7 @@
 // src/auth/entities/refresh-token.entity.ts
 import { Column, Entity, Index, ManyToOne } from 'typeorm';
-import { BaseEntity } from '../../common/entities/base.entity';
-import { User } from '../../users/entities/user.entity';
+import { BaseEntity } from '../BaseEntity';
+import { User } from './User';
 
 @Entity('refresh_tokens')
 export class RefreshToken extends BaseEntity {

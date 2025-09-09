@@ -1,6 +1,6 @@
 // src/partners/entities/partner.entity.ts
 import { Column, Entity } from 'typeorm';
-import { BaseEntity } from '../../common/entities/base.entity';
+import { BaseEntity } from '../BaseEntity';
 
 @Entity('partners')
 export class Partner extends BaseEntity {

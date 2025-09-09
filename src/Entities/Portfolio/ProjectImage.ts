@@ -1,7 +1,7 @@
 // src/projects/entities/project-image.entity.ts
 import { Column, Entity, ManyToOne } from 'typeorm';
-import { BaseEntity } from '../../common/entities/base.entity';
-import { Project } from './project.entity';
+import { BaseEntity } from '../BaseEntity';
+import { Project } from './Project';
 
 @Entity('project_images')
 export class ProjectImage extends BaseEntity {

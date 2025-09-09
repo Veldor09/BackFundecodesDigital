@@ -1,7 +1,7 @@
 // src/volunteers/entities/volunteer.entity.ts
 import { Column, Entity, OneToMany, Unique } from 'typeorm';
-import { BaseEntity } from '../../common/entities/base.entity';
-import { VolunteerApplication } from './volunteer-application.entity';
+import { BaseEntity } from '../BaseEntity';
+import { VolunteerApplication } from './VolunteerApplication';
 
 @Entity('volunteers')
 @Unique(['email'])

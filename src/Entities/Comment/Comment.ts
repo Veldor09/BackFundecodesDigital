@@ -1,9 +1,9 @@
 // src/social/entities/comment.entity.ts
 import { Column, Entity, ManyToOne, Index } from 'typeorm';
-import { BaseEntity } from '../../common/entities/base.entity';
-import { User } from '../../users/entities/user.entity';
-import { Project } from '../../projects/entities/project.entity';
-import { Post } from '../../web/entities/post.entity';
+import { BaseEntity } from '../BaseEntity';
+import { User } from '../Auth & Role/User';
+import { Project } from '../Portfolio/Project';
+import { Post } from '../Web/Post';
 
 @Entity('comments')
 export class Comment extends BaseEntity {

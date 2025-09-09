@@ -1,8 +1,8 @@
 // src/volunteers/entities/volunteer-application.entity.ts
 import { Column, Entity, ManyToOne } from 'typeorm';
-import { BaseEntity } from '../../common/entities/base.entity';
-import { Volunteer } from './volunteer.entity';
-import { Project } from '../../projects/entities/project.entity';
+import { BaseEntity } from '../BaseEntity';
+import { Volunteer } from './Volunteer';
+import { Project } from '../Portfolio/Project';
 
 export type ApplicationStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 

@@ -1,8 +1,8 @@
 // src/users/entities/user.entity.ts
 import { Column, Entity, OneToMany, Unique } from 'typeorm';
-import { BaseEntity } from '../../common/entities/base.entity';
-import { UserRole } from './user-role.entity';
-import { RefreshToken } from '../../auth/entities/refresh-token.entity';
+import { BaseEntity } from '../BaseEntity';
+import { UserRole } from './UserRole';
+import { RefreshToken } from './Token';
 
 @Entity('users')
 @Unique(['email'])
