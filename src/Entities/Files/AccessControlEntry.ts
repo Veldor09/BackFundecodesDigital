@@ -1,9 +1,9 @@
 // src/storage/entities/access-control-entry.entity.ts
 import { Column, Entity, ManyToOne, Unique } from 'typeorm';
-import { BaseEntity } from '../../common/entities/base.entity';
-import { FileItem } from './file-item.entity';
-import { User } from '../../users/entities/user.entity';
-import { Role } from '../../users/entities/role.entity';
+import { BaseEntity } from '../BaseEntity';
+import { FileItem } from './FileItem';
+import { User } from '../Auth & Role/User';
+import { Role } from '../Auth & Role/Role';
 
 @Entity('access_control_entries')
 @Unique(['file', 'user', 'role'])

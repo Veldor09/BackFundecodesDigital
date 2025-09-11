@@ -1,8 +1,8 @@
 // src/storage/entities/file-item.entity.ts
 import { Column, Entity, ManyToOne } from 'typeorm';
-import { BaseEntity } from '../../common/entities/base.entity';
-import { Folder } from './folder.entity';
-import { User } from '../../users/entities/user.entity';
+import { BaseEntity } from '../BaseEntity';
+import { Folder } from './Folder';
+import { User } from '../Auth & Role/User';
 
 @Entity('file_items')
 export class FileItem extends BaseEntity {

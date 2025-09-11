@@ -1,21 +1,14 @@
 // src/SistemaAdmin/projects/dto/add-document-url.dto.ts
-import { IsNotEmpty, IsOptional, IsString, IsUrl } from 'class-validator';
-import { Transform } from 'class-transformer';
+
+import { IsNotEmpty, IsOptional, IsString, IsUrl, IsNumber } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
 
 const trim = (v: any) => (typeof v === 'string' ? v.trim() : v);
 
-/**
- * Body JSON:
- * {
- *   "url": "https://.../file.pdf",
- *   "name": "Brochure del proyecto",
- *   "mimeType": "application/pdf"
- * }
- */
 export class AddDocumentUrlDto {
   @IsString()
   @IsNotEmpty({ message: 'url es requerido' })
-  @IsUrl({}, { message: 'url debe ser un URL válido' })
+  //@IsUrl({}, { message: 'url debe ser un URL válido' })
   @Transform(({ value }) => trim(value))
   url!: string;
 
@@ -28,4 +21,9 @@ export class AddDocumentUrlDto {
   @IsString()
   @Transform(({ value }) => trim(value))
   mimeType?: string;
+
+  @IsOptional()
+  @IsNumber({}, { message: 'size debe ser un número' })
+  @Type(() => Number)
+  size?: number;
 }

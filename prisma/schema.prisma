@@ -15,28 +15,28 @@ enum ProjectStatus {
 }
 
 model Project {
-  id          Int           @id @default(autoincrement())
-  title       String
-  slug        String        @unique
-  summary     String?
-  content     String?
-  coverUrl    String?
+  id       Int     @id @default(autoincrement())
+  title    String
+  slug     String  @unique
+  summary  String?
+  content  String?
+  coverUrl String?
 
   // NOT NULL
-  category    String
-  place       String
-  area        String
+  category String
+  place    String
+  area     String
 
-  status      ProjectStatus @default(EN_PROCESO)
+  status ProjectStatus @default(EN_PROCESO)
 
-  published   Boolean       @default(false)
+  published   Boolean   @default(false)
   publishedAt DateTime?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   // Relaciones
-  images      ProjectImage[]
-  documents   ProjectDocument[]
+  images    ProjectImage[]
+  documents ProjectDocument[]
 
   /// combinación única solicitada
   @@unique([title, place, area])
@@ -45,42 +45,43 @@ model Project {
 }
 
 model ProjectImage {
-  id         Int      @id @default(autoincrement())
-  projectId  Int
-  url        String
-  alt        String?
-  order      Int      @default(0)
-  createdAt  DateTime @default(now())
+  id        Int      @id @default(autoincrement())
+  projectId Int
+  url       String
+  alt       String?
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
 
-  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@index([projectId])
   @@index([order])
 }
 
 model ProjectDocument {
-  id         Int      @id @default(autoincrement())
-  projectId  Int
-  url        String
-  name       String
-  mimeType   String?
-  createdAt  DateTime @default(now())
+  id        Int      @id @default(autoincrement())
+  projectId Int
+  url       String
+  name      String
+  mimeType  String?
+  size      Int?
+  createdAt DateTime @default(now())
 
-  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@index([projectId])
 }
 
 model News {
-  id          Int      @id @default(autoincrement())
+  id          Int       @id @default(autoincrement())
   title       String
-  slug        String   @unique
+  slug        String    @unique
   content     String?
   coverUrl    String?
-  published   Boolean  @default(false)
+  published   Boolean   @default(false)
   publishedAt DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
 model ContactMessage {

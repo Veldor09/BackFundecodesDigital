@@ -1,7 +1,7 @@
 // src/web/entities/post.entity.ts
 import { Column, Entity, OneToMany } from 'typeorm';
-import { BaseEntity } from '../../common/entities/base.entity';
-import { Comment } from '../../social/entities/comment.entity';
+import { BaseEntity } from '../BaseEntity';
+import { Comment } from '../Comment/Comment';
 
 @Entity('posts')
 export class Post extends BaseEntity {
