@@ -61,6 +61,17 @@ async function bootstrap() {
     .setTitle('FUNDECODES API')
     .setDescription('API pública para sitio informativo')
     .setVersion('1.0')
+     .addBearerAuth( // <-- IMPORTANTE para el botón "Authorize"
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        name: 'Authorization',
+        description: 'Pega aquí tu token JWT (sin comillas).',
+        in: 'header',
+      },
+      'bearer', // nombre del esquema
+    )
     .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('docs', app, document);

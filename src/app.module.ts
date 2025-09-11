@@ -11,6 +11,9 @@ import { FilesModule } from './SistemaAdmin/files/files.module';
 import { NewsModule } from './news/news.module';
 import { ContactModule } from './PaginaInfo/contact/contact.module';
 import { VolunteersModule } from './PaginaInfo/volunteers/volunteers.module';
+import { InformationalPageModule } from './PaginaInfo/informational-page.module';
+import { AuthModule } from './auth/auth.module'
+import { UsersModule } from './SistemaAdmin/users/users.module';
 
 @Module({
   imports: [
@@ -27,6 +30,9 @@ import { VolunteersModule } from './PaginaInfo/volunteers/volunteers.module';
     NewsModule,
     ContactModule,
     VolunteersModule,
+    InformationalPageModule,
+    AuthModule,
+    UsersModule,
   ],
 })
 export class AppModule {}
