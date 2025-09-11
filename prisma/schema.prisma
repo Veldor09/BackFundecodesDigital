@@ -101,3 +101,52 @@ model Volunteer {
   mensaje        String
   createdAt      DateTime @default(now())
 }
+
+model InformationalPage {
+  id            String   @id @default("default") // Solo una fila
+  vision        Json // { title, content, imageUrl }
+  mission       Json // { title, content, imageUrl }
+  collaborators Json // Array de Collaborator
+  comments      Json // Array de CommentItem
+  updatedAt     DateTime @updatedAt
+}
+
+model User {
+  id        Int        @id @default(autoincrement())
+  email     String     @unique
+  name      String?
+  password  String
+  roles     UserRole[]
+  verified  Boolean    @default(false)
+  approved  Boolean    @default(false) // bloquear login si la cuenta no está aprobada
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model Role {
+  id    Int        @id @default(autoincrement())
+  name  String     @unique
+  users UserRole[]
+
+  // Relación implícita M:N con permisos
+  permissions Permission[]
+}
+
+model Permission {
+  id          Int     @id @default(autoincrement())
+  key         String  @unique // ej: "users.manage", "roles.manage", "projects.update"
+  description String?
+
+  // Relación implícita M:N con roles
+  roles Role[]
+}
+
+model UserRole {
+  id     Int  @id @default(autoincrement())
+  user   User @relation(fields: [userId], references: [id])
+  userId Int
+  role   Role @relation(fields: [roleId], references: [id])
+  roleId Int
+
+  @@unique([userId, roleId]) // evita duplicar el mismo rol para un usuario
+}
