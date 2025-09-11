@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { QueryUserDto } from './dto/query-user.dto';
+import { AssignRolesDto } from './dto/assign-roles.dto';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
@@ -15,7 +16,7 @@ export class UsersService {
 
     const password = await bcrypt.hash(dto.password, 10);
     const verified = dto.verified ?? false;
-
+    // ⚠️ No usamos approved aquí para evitar error de tipos si el cliente no está actualizado
     const user = await this.prisma.user.create({
       data: { email: dto.email, name: dto.name, password, verified },
     });
@@ -32,6 +33,12 @@ export class UsersService {
         });
       }
     }
+
+    // Si quisieras setear approved en el momento de creación,
+    // hazlo con una segunda operación:
+    // if ((dto as any).approved !== undefined) {
+    //   await this.prisma.user.update({ where: { id: user.id }, data: { approved: (dto as any).approved } as any });
+    // }
 
     return this.findOne(user.id);
   }
@@ -73,20 +80,21 @@ export class UsersService {
   }
 
   async update(id: number, dto: UpdateUserDto) {
-    const data: any = { ...dto };
+    // Construye datos seguros: evita approved aquí para no chocar con tipos viejos
+    const data: any = {};
+    if (dto.email !== undefined) data.email = dto.email;
+    if (dto.name !== undefined) data.name = dto.name;
+    if (dto.verified !== undefined) data.verified = dto.verified;
     if (dto.password) data.password = await bcrypt.hash(dto.password, 10);
-    delete data.roles;
 
     await this.prisma.user.update({ where: { id }, data });
 
-    // Si quieren actualizar roles desde este endpoint (opcional):
+    // Si quieren actualizar roles desde este endpoint:
     if (dto.roles) {
       const current = await this.prisma.userRole.findMany({ where: { userId: id } });
-      // elimina relaciones actuales
       if (current.length) {
         await this.prisma.userRole.deleteMany({ where: { userId: id } });
       }
-      // crea nuevas
       for (const r of dto.roles) {
         const role = await this.prisma.role.upsert({
           where: { name: r },
@@ -96,6 +104,11 @@ export class UsersService {
         await this.prisma.userRole.create({ data: { userId: id, roleId: role.id } });
       }
     }
+
+    // Si necesitas cambiar approved desde aquí:
+    // if ((dto as any).approved !== undefined) {
+    //   await this.prisma.user.update({ where: { id }, data: { approved: (dto as any).approved } as any });
+    // }
 
     return this.findOne(id);
   }
@@ -107,6 +120,13 @@ export class UsersService {
 
   async verifyUser(id: number, verified: boolean) {
     await this.prisma.user.update({ where: { id }, data: { verified } });
+    return this.findOne(id);
+  }
+
+  // ✅ método explícito para approved (lo usa el front y evita el problema en UpdateInput)
+  async approveUser(id: number, approved: boolean) {
+    // @ts-ignore (se puede quitar tras regenerar el cliente)
+    await this.prisma.user.update({ where: { id }, data: { approved } as any });
     return this.findOne(id);
   }
 
@@ -129,5 +149,55 @@ export class UsersService {
     const rel = await this.prisma.userRole.findFirst({ where: { userId: id, roleId: role.id } });
     if (rel) await this.prisma.userRole.delete({ where: { id: rel.id } });
     return this.findOne(id);
+  }
+
+  // ==========================
+  // Métodos por IDs (batch)
+  // ==========================
+  async getUserRoles(userId: number) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { roles: { include: { role: true } } },
+    });
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+    return user.roles.map((ur) => ur.role);
+  }
+
+  async assignRoles(userId: number, dto: AssignRolesDto) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+
+    const roles = await this.prisma.role.findMany({
+      where: { id: { in: dto.roleIds } },
+      select: { id: true },
+    });
+
+    if (roles.length !== dto.roleIds.length) {
+      const found = new Set(roles.map((r) => r.id));
+      const missing = dto.roleIds.filter((id) => !found.has(id));
+      throw new BadRequestException(`Roles inexistentes: ${missing.join(', ')}`);
+    }
+
+    await this.prisma.userRole.createMany({
+      data: roles.map((r) => ({ userId, roleId: r.id })),
+      skipDuplicates: true, // requiere @@unique([userId, roleId]) en Prisma
+    });
+
+    return this.getUserRoles(userId);
+  }
+
+  async removeRoleById(userId: number, roleId: number) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+
+    const res = await this.prisma.userRole.deleteMany({
+      where: { userId, roleId },
+    });
+
+    if (res.count === 0) {
+      throw new NotFoundException('El usuario no tiene asignado ese rol');
+    }
+
+    return this.getUserRoles(userId);
   }
 }

@@ -1,14 +1,21 @@
 // src/prisma/prisma.service.ts
-import { Injectable, OnModuleDestroy, OnModuleInit, INestApplication } from '@nestjs/common';
+import {
+  Injectable,
+  INestApplication,
+  OnModuleInit,
+  OnModuleDestroy,
+} from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+export class PrismaService
+  extends PrismaClient
+  implements OnModuleInit, OnModuleDestroy
+{
   constructor() {
     super({
-      log: ['warn', 'error'], // ajusta a ['query','info','warn','error'] si quieres más logs en dev
+      log: ['warn', 'error'], // Cambia a ['query','info','warn','error'] en desarrollo si quieres más logs
     });
-    // Sin middleware ($use). Tu lógica de normalización/slug está en los services.
   }
 
   async onModuleInit() {
@@ -20,22 +27,19 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   }
 
   /**
-   * En Prisma 5+ (library engine) el hook 'beforeExit' ya no está en prisma.$on.
-   * Debemos usar process.on('beforeExit') / señales del sistema.
+   * En Prisma 5+ (library engine) el evento `beforeExit` ya no se usa igual.
+   * Implementamos shutdown hooks para NestJS manualmente.
    */
   async enableShutdownHooks(app: INestApplication) {
     const closeApp = async () => {
       try {
         await app.close();
-      } catch {
-        // ignora errores al cerrar
+      } catch (e) {
+        // Ignora errores de cierre
       }
     };
 
-    // Cierre cuando Node está por salir
     process.on('beforeExit', closeApp);
-
-    // Cierre por señales comunes
     process.on('SIGINT', closeApp);
     process.on('SIGTERM', closeApp);
     process.on('SIGUSR2', closeApp); // nodemon

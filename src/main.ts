@@ -11,13 +11,14 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { json, urlencoded } from 'express';
 import { join } from 'path';
 
+// ⬇️ NUEVO: filtro global de errores estándar
+import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   // Archivos estáticos: /uploads/*
   app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads/' });
-
 
   // (Opcional) Aumentar límite de body si lo necesitas
   app.use(json({ limit: '10mb' }));
@@ -30,13 +31,8 @@ async function bootstrap() {
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
-      'Origin',
-      'X-Requested-With',
-      'Content-Type',
-      'Accept',
-      'Authorization',
-      'Cache-Control',
-      'Pragma',
+      'Origin', 'X-Requested-With', 'Content-Type', 'Accept',
+      'Authorization', 'Cache-Control', 'Pragma',
     ],
     exposedHeaders: ['ETag'],
   });
@@ -51,6 +47,9 @@ async function bootstrap() {
     }),
   );
 
+  // ⬇️ NUEVO: aplicar filtro global de excepciones
+  app.useGlobalFilters(new HttpExceptionFilter());
+
   // Proxy/CDN opcional
   if (process.env.TRUST_PROXY === '1') {
     app.set('trust proxy', 1);
@@ -61,7 +60,7 @@ async function bootstrap() {
     .setTitle('FUNDECODES API')
     .setDescription('API pública para sitio informativo')
     .setVersion('1.0')
-     .addBearerAuth( // <-- IMPORTANTE para el botón "Authorize"
+    .addBearerAuth(
       {
         type: 'http',
         scheme: 'bearer',
@@ -70,13 +69,13 @@ async function bootstrap() {
         description: 'Pega aquí tu token JWT (sin comillas).',
         in: 'header',
       },
-      'bearer', // nombre del esquema
+      'bearer',
     )
     .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('docs', app, document);
 
-  // Prisma: cierre limpio (implementado en PrismaService para library engine)
+  // Prisma: cierre limpio
   const prisma = app.get(PrismaService);
   await prisma.enableShutdownHooks(app);
 

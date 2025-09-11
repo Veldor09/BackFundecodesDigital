@@ -2,53 +2,65 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
-  const count = await prisma.project.count();
-  if (count > 0) {
-    console.log('Seed: ya hay proyectos, no se crean nuevos.');
-    return;
+  console.log('🌱 Seeding roles y permisos…');
+
+  // 1) Permisos base
+  const PERMISSIONS = [
+    { key: 'users.manage', description: 'Gestionar usuarios' },
+    { key: 'roles.manage', description: 'Gestionar roles y permisos' },
+    { key: 'projects.manage', description: 'Gestionar proyectos' },
+    { key: 'news.manage', description: 'Gestionar noticias' },
+  ];
+
+  for (const p of PERMISSIONS) {
+    await prisma.permission.upsert({
+      where: { key: p.key },
+      update: { description: p.description },
+      create: p,
+    });
   }
 
-  await prisma.project.createMany({
-    data: [
-      {
-        title: 'Reforestación Río Verde',
-        slug: 'reforestacion-rio-verde',
-        summary: 'Plantación de 500 árboles nativos',
-        category: 'ambiental',
-        status: 'EN_PROCESO' as any,
-        place: 'Nicoya',
-        area: 'Conservación',
-        published: true,
-      },
-      {
-        title: 'Capacitación de voluntarios 2025',
-        slug: 'capacitacion-voluntarios-2025',
-        summary: 'Formación básica y avanzada',
-        category: 'social',
-        status: 'FINALIZADO' as any,
-        place: 'Santa Cruz',
-        area: 'Educación',
-        published: true,
-      },
-      {
-        title: 'Monitoreo de calidad de agua',
-        slug: 'monitoreo-calidad-agua',
-        summary: 'Muestreo mensual y reporte abierto',
-        category: 'ambiental',
-        status: 'EN_PROCESO' as any,
-        place: 'Hojancha',
-        area: 'Hídrica',
-        published: false,
-      },
-    ],
+  // 2) Leer IDs de permisos
+  const allPerms = await prisma.permission.findMany({
+    select: { id: true, key: true },
   });
+  const permIdByKey = Object.fromEntries(allPerms.map((p) => [p.key, p.id]));
 
-  console.log('Seed: proyectos creados.');
+  // 3) Roles con sus permisos
+  const ROLES: Record<string, string[]> = {
+    admin: ['users.manage', 'roles.manage', 'projects.manage', 'news.manage'],
+    editor: ['projects.manage', 'news.manage'],
+    viewer: [],
+  };
+
+  // 4) Upsert roles + conectar permisos
+  for (const [name, keys] of Object.entries(ROLES)) {
+    const connects = keys
+      .map((k) => permIdByKey[k])
+      .filter(Boolean)
+      .map((id) => ({ id }));
+
+    await prisma.role.upsert({
+      where: { name },
+      update: {
+        // reset + conectar (cast para evitar error de tipos si el cliente está cacheado)
+        permissions: { set: [], connect: connects } as any,
+      },
+      create: {
+        name,
+        permissions: { connect: connects } as any,
+      },
+    });
+  }
+
+  console.log('✅ Seed completado.');
 }
 
-main().catch(e => {
-  console.error('Seed error:', e);
-  process.exit(1);
-}).finally(async () => {
-  await prisma.$disconnect();
-});
+main()
+  .catch((e) => {
+    console.error('❌ Seed error:', e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
