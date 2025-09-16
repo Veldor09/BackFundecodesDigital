@@ -13,8 +13,11 @@ import { InformationalPageModule } from './PaginaInfo/informational-page.module'
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './SistemaAdmin/users/users.module';
 
-// 👇 IMPORTA el RolesModule
+// Roles
 import { RolesModule } from './SistemaAdmin/roles/roles.module';
+
+// 👇 NUEVO: Colaboradores
+import { CollaboratorsModule } from './SistemaAdmin/collaborator/collaborators.module';
 
 @Module({
   imports: [
@@ -25,18 +28,23 @@ import { RolesModule } from './SistemaAdmin/roles/roles.module';
       max: 500,
     }),
     PrismaModule,
+
+    // Sistema Admin
     ProjectsModule,
     DashboardModule,
     FilesModule,
+    UsersModule,
+    RolesModule,
+    CollaboratorsModule, // 👈 registrado aquí
+
+    // Público / Páginas informativas
     NewsModule,
     ContactModule,
     VolunteersModule,
     InformationalPageModule,
-    AuthModule,
-    UsersModule,
 
-    // 👇 AGREGA EL MÓDULO DE ROLES
-    RolesModule,
+    // Auth
+    AuthModule,
   ],
 })
 export class AppModule {}
