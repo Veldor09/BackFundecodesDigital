@@ -147,7 +147,9 @@ export class ProjectsService {
    * filename puede venir URL-encoded o como parte de una URL.
    */
   async removeDocumentByName(projectId: number, filename: string) {
-    const base = filename.includes('/') ? filename.split('/').pop() ?? '' : filename;
+    const base = filename.includes('/')
+      ? (filename.split('/').pop() ?? '')
+      : filename;
     const decoded = decodeURIComponent(base);
 
     const doc = await this.prisma.projectDocument.findFirst({
@@ -222,7 +224,7 @@ export class ProjectsService {
     } catch (e) {
       // No rompemos la eliminación en DB si el storage falla,
       // pero dejamos registro en logs del servidor:
-      // eslint-disable-next-line no-console
+
       console.error('⚠️ No se pudo eliminar del storage:', e);
     }
   }

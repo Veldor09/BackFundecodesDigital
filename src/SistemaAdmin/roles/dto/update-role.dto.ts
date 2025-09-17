@@ -21,4 +21,3 @@ export class UpdateRoleDto extends PartialType(CreateRoleDto) {
   @IsString({ each: true })
   permissionKeys?: string[];
 }
-

@@ -16,7 +16,13 @@ import {
   BadRequestException,
   DefaultValuePipe,
 } from '@nestjs/common';
-import { ApiBody, ApiConsumes, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBody,
+  ApiConsumes,
+  ApiParam,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import { Response } from 'express';
 import { ProjectsService } from './projects.service';
 import { CreateProjectDto } from './dto/create-project.dto';
@@ -64,9 +70,14 @@ export class ProjectsController {
     const data = await this.service.findOne(idOrSlug);
 
     const seconds = Math.max(0, Number.isFinite(+ttl) ? +ttl : 60);
-    res.setHeader('Cache-Control', `public, max-age=${seconds}, stale-while-revalidate=120`);
+    res.setHeader(
+      'Cache-Control',
+      `public, max-age=${seconds}, stale-while-revalidate=120`,
+    );
 
-    const etagBase = data.updatedAt ? new Date(data.updatedAt).toISOString() : '';
+    const etagBase = data.updatedAt
+      ? new Date(data.updatedAt).toISOString()
+      : '';
     const etag = `"proj-${data.id}-${etagBase}"`;
     res.setHeader('ETag', etag);
 
@@ -96,7 +107,8 @@ export class ProjectsController {
 
     const normalized = normalizeDriveUrl(body.url);
     const rawOrder = (body as any).order;
-    const parsedOrder = typeof rawOrder === 'number' ? rawOrder : Number(rawOrder);
+    const parsedOrder =
+      typeof rawOrder === 'number' ? rawOrder : Number(rawOrder);
     const safeOrder = Number.isFinite(parsedOrder) ? parsedOrder : 0;
 
     return this.service.addImage(id, {
@@ -123,7 +135,7 @@ export class ProjectsController {
       return await this.service.addDocument(id, body);
     } catch (error) {
       // log visible en servidor
-      // eslint-disable-next-line no-console
+
       console.error('❌ Error en addDocumentByUrl:', error);
       throw error;
     }
@@ -172,10 +184,22 @@ export class ProjectsController {
       }),
       limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
       fileFilter: (req, file, cb) => {
-        const allowed = ['.pdf', '.doc', '.docx', '.txt', '.jpg', '.jpeg', '.png', '.gif'];
+        const allowed = [
+          '.pdf',
+          '.doc',
+          '.docx',
+          '.txt',
+          '.jpg',
+          '.jpeg',
+          '.png',
+          '.gif',
+        ];
         const ext = extname(file.originalname).toLowerCase();
         if (!allowed.includes(ext)) {
-          return cb(new BadRequestException('Tipo de archivo no permitido'), false);
+          return cb(
+            new BadRequestException('Tipo de archivo no permitido'),
+            false,
+          );
         }
         cb(null, true);
       },
@@ -204,8 +228,18 @@ export class ProjectsController {
    * DELETE /projects/:id/documents/:documentId
    */
   @Delete(':id/documents/:documentId')
-  @ApiParam({ name: 'id', type: Number, required: true, description: 'ID del proyecto' })
-  @ApiParam({ name: 'documentId', type: Number, required: true, description: 'ID del documento' })
+  @ApiParam({
+    name: 'id',
+    type: Number,
+    required: true,
+    description: 'ID del proyecto',
+  })
+  @ApiParam({
+    name: 'documentId',
+    type: Number,
+    required: true,
+    description: 'ID del documento',
+  })
   async deleteProjectDocumentById(
     @Param('id', ParseIntPipe) id: number,
     @Param('documentId', ParseIntPipe) documentId: number,
@@ -222,7 +256,8 @@ export class ProjectsController {
   @ApiQuery({
     name: 'name',
     required: false,
-    description: 'Nombre del archivo a eliminar (URL-encoded). Alternativa: enviar body {url}.',
+    description:
+      'Nombre del archivo a eliminar (URL-encoded). Alternativa: enviar body {url}.',
   })
   async deleteProjectDocumentLegacy(
     @Param('id', ParseIntPipe) id: number,
@@ -231,9 +266,10 @@ export class ProjectsController {
   ) {
     // Soporta ambos: ?name= y body.url para compatibilidad
     const raw = name ?? url ?? '';
-    if (!raw) throw new BadRequestException('name (query) o url (body) es requerido');
+    if (!raw)
+      throw new BadRequestException('name (query) o url (body) es requerido');
     // Normaliza: si viene una URL, extrae el nombre
-    const base = raw.includes('/') ? raw.split('/').pop() ?? '' : raw;
+    const base = raw.includes('/') ? (raw.split('/').pop() ?? '') : raw;
     const decoded = decodeURIComponent(base);
     return this.service.removeDocumentByName(id, decoded);
   }

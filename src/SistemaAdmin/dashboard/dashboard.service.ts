@@ -8,20 +8,21 @@ export class DashboardService {
   async getMetrics() {
     try {
       // Proyectos por estado
-      const [totalProjects, activeProjects, draftProjects, finishedProjects] = await Promise.all([
-        this.prisma.project.count(),
-        this.prisma.project.count({ where: { published: true } }),
-        this.prisma.project.count({ where: { published: false } }),
-        this.prisma.project.count({ where: { status: 'FINALIZADO' } }),
-      ]);
+      const [totalProjects, activeProjects, draftProjects, finishedProjects] =
+        await Promise.all([
+          this.prisma.project.count(),
+          this.prisma.project.count({ where: { published: true } }),
+          this.prisma.project.count({ where: { published: false } }),
+          this.prisma.project.count({ where: { status: 'FINALIZADO' } }),
+        ]);
 
       // Archivos
       const [totalFiles, lastFile] = await Promise.all([
         this.prisma.projectDocument.count(),
         this.prisma.projectDocument.findFirst({
           orderBy: { createdAt: 'desc' },
-          select: { createdAt: true, name: true }
-        })
+          select: { createdAt: true, name: true },
+        }),
       ]);
 
       // Imágenes
@@ -34,8 +35,8 @@ export class DashboardService {
       const [totalVolunteers, recentVolunteers] = await Promise.all([
         this.prisma.volunteer.count(),
         this.prisma.volunteer.count({
-          where: { createdAt: { gte: thirtyDaysAgo } }
-        })
+          where: { createdAt: { gte: thirtyDaysAgo } },
+        }),
       ]);
 
       // Mensajes de contacto
@@ -43,8 +44,8 @@ export class DashboardService {
         this.prisma.contactMessage.count(),
         this.prisma.contactMessage.findFirst({
           orderBy: { createdAt: 'desc' },
-          select: { createdAt: true }
-        })
+          select: { createdAt: true },
+        }),
       ]);
 
       // Calcular recapitulación de actividades del mes
@@ -54,8 +55,8 @@ export class DashboardService {
 
       const monthlyActivities = await this.prisma.project.count({
         where: {
-          updatedAt: { gte: currentMonth }
-        }
+          updatedAt: { gte: currentMonth },
+        },
       });
 
       return {
@@ -63,56 +64,70 @@ export class DashboardService {
         metrics: {
           users: {
             total: totalVolunteers,
-            label: 'Usuarios'
+            label: 'Usuarios',
           },
           projects: {
             total: totalProjects,
             active: activeProjects,
             draft: draftProjects,
             finished: finishedProjects,
-            label: 'Proyectos'
+            label: 'Proyectos',
           },
           files: {
             total: totalFiles + totalImages, // Total archivos (documentos + imágenes)
             documents: totalFiles,
             images: totalImages,
-            lastUpload: lastFile ? {
-              name: lastFile.name,
-              date: lastFile.createdAt
-            } : null,
-            label: 'Archivos'
+            lastUpload: lastFile
+              ? {
+                  name: lastFile.name,
+                  date: lastFile.createdAt,
+                }
+              : null,
+            label: 'Archivos',
           },
           volunteering: {
             total: totalVolunteers,
             thisMonth: recentVolunteers,
-            label: 'Voluntariado'
+            label: 'Voluntariado',
           },
           accounting: {
             // Placeholder - necesitarás implementar modelos de contabilidad
             total: 0,
-            label: 'Contabilidad'
+            label: 'Contabilidad',
           },
           billing: {
             // Placeholder - necesitarás implementar modelos de facturación
             total: 0,
-            label: 'Facturación'
-          }
+            label: 'Facturación',
+          },
         },
         // Recapitulación de actividades
         recap: {
           monthlyActivities,
-          lastActivity: lastActivity?.createdAt || null
+          lastActivity: lastActivity?.createdAt || null,
         },
         // Accesos rápidos
         quickAccess: [
-          { name: 'Gestión de Voluntariado', href: '/admin/voluntariado', icon: 'handshake' },
+          {
+            name: 'Gestión de Voluntariado',
+            href: '/admin/voluntariado',
+            icon: 'handshake',
+          },
           { name: 'Contabilidad', href: '/admin/contabilidad', icon: 'wallet' },
-          { name: 'Colaboradores', href: '/admin/colaboradores', icon: 'users' },
+          {
+            name: 'Colaboradores',
+            href: '/admin/colaboradores',
+            icon: 'users',
+          },
           { name: 'Facturación', href: '/admin/facturacion', icon: 'receipt' },
-          { name: 'Recapitulación', href: '/admin/recapitulacion', icon: 'bar-chart' }
+          {
+            name: 'Recapitulación',
+            href: '/admin/recapitulacion',
+            icon: 'bar-chart',
+          },
         ],
         // Timestamp para caché
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
     } catch (error) {
       // Corrección: asegurar que error sea tipo Error

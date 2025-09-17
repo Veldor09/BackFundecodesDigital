@@ -1,9 +1,16 @@
-// src/SistemaAdmin/collaborator/collaborators.service.ts
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  ConflictException,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
+import { generateStrongPassword } from '../../common/utils/password.util';
+import { WelcomeFlowService } from '../../common/services/welcome-flow.service';
 
-// Enums locales (strings) para no depender de @prisma/client
+const BCRYPT_COST = 12;
+
 type Rol = 'ADMIN' | 'COLABORADOR';
 type Estado = 'ACTIVO' | 'INACTIVO';
 
@@ -11,7 +18,7 @@ type CreateData = {
   nombreCompleto: string;
   correo: string;
   cedula: string;
-  fechaNacimiento?: string | null; // ISO: YYYY-MM-DD
+  fechaNacimiento?: string | null;
   telefono?: string | null;
   rol?: Rol;
   password: string;
@@ -24,30 +31,98 @@ type UpdateData = Partial<Omit<CreateData, 'password'>> & {
 
 @Injectable()
 export class CollaboratorsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly welcome: WelcomeFlowService,
+  ) {}
 
-  // Getter con cast para destrabar el tipado inmediatamente
   private get db(): any {
     return this.prisma as any;
   }
 
+  private ensureAge18(fechaISO?: string | null) {
+    if (!fechaISO) return;
+    const d = new Date(fechaISO);
+    if (Number.isNaN(d.getTime())) {
+      throw new BadRequestException(
+        'fechaNacimiento inválida (formato esperado YYYY-MM-DD)',
+      );
+    }
+    const now = new Date();
+    let age = now.getFullYear() - d.getFullYear();
+    const hadBirthdayThisYear =
+      now.getMonth() > d.getMonth() ||
+      (now.getMonth() === d.getMonth() && now.getDate() >= d.getDate());
+    if (!hadBirthdayThisYear) age -= 1;
+    if (age < 18) {
+      throw new BadRequestException('El colaborador debe ser mayor de 18 años');
+    }
+  }
+
+  private async ensureUnique(
+    correo: string,
+    cedula: string,
+    ignoreId?: number,
+  ) {
+    const found = await this.db.collaborator.findFirst({
+      where: {
+        OR: [{ correo }, { cedula }],
+        ...(ignoreId ? { NOT: { id: ignoreId } } : {}),
+      },
+      select: { id: true, correo: true, cedula: true },
+    });
+    if (found) {
+      if (found.correo === correo)
+        throw new ConflictException('Correo ya está en uso');
+      if (found.cedula === cedula)
+        throw new ConflictException('Cédula ya está en uso');
+    }
+  }
+
   async create(data: CreateData) {
     await this.ensureUnique(data.correo, data.cedula);
+    this.ensureAge18(data.fechaNacimiento);
 
-    const passwordHash = await bcrypt.hash(data.password, 10);
+    const passwordHash = await bcrypt.hash(data.password, BCRYPT_COST);
 
-    return this.db.collaborator.create({
+    const created = await this.db.collaborator.create({
       data: {
         nombreCompleto: data.nombreCompleto,
         correo: data.correo,
         cedula: data.cedula,
-        fechaNacimiento: data.fechaNacimiento ? new Date(data.fechaNacimiento) : null,
+        fechaNacimiento: data.fechaNacimiento
+          ? new Date(data.fechaNacimiento)
+          : null,
         telefono: data.telefono ?? null,
-        rol: (data.rol ?? 'COLABORADOR') as Rol,
+        rol: data.rol ?? 'COLABORADOR',
         passwordHash,
-        estado: (data.estado ?? 'ACTIVO') as Estado,
+        estado: data.estado ?? 'ACTIVO',
+        passwordUpdatedAt: new Date(),
+        tempPasswordExpiresAt: null,
+      },
+      select: {
+        id: true,
+        nombreCompleto: true,
+        correo: true,
+        cedula: true,
+        fechaNacimiento: true,
+        telefono: true,
+        rol: true,
+        estado: true,
+        createdAt: true,
+        updatedAt: true,
       },
     });
+
+    void this.welcome
+      .onCollaboratorCreated({
+        id: created.id,
+        correo: created.correo,
+        nombreCompleto: created.nombreCompleto,
+      })
+      .catch(() => {});
+
+    return created;
   }
 
   async list(params: {
@@ -122,7 +197,7 @@ export class CollaboratorsService {
     return found;
   }
 
-  async update(id: number, data: UpdateData) {
+  async update(id: number, data: UpdateData): Promise<void> {
     const existing = await this.db.collaborator.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Colaborador no encontrado');
 
@@ -131,10 +206,15 @@ export class CollaboratorsService {
     if (nextCorreo !== existing.correo || nextCedula !== existing.cedula) {
       await this.ensureUnique(nextCorreo, nextCedula, id);
     }
+    if (data.fechaNacimiento !== undefined) {
+      this.ensureAge18(data.fechaNacimiento);
+    }
 
-    const passwordHash = data.password ? await bcrypt.hash(data.password, 10) : undefined;
+    const passwordHash = data.password
+      ? await bcrypt.hash(data.password, BCRYPT_COST)
+      : undefined;
 
-    return this.db.collaborator.update({
+    await this.db.collaborator.update({
       where: { id },
       data: {
         nombreCompleto: data.nombreCompleto,
@@ -144,25 +224,27 @@ export class CollaboratorsService {
           data.fechaNacimiento === undefined
             ? undefined
             : data.fechaNacimiento
-            ? new Date(data.fechaNacimiento)
-            : null,
+              ? new Date(data.fechaNacimiento)
+              : null,
         telefono: data.telefono,
-        rol: data.rol as Rol | undefined,
-        passwordHash, // solo si vino password
-        estado: data.estado as Estado | undefined,
+        rol: data.rol,
+        passwordHash,
+        ...(passwordHash
+          ? { passwordUpdatedAt: new Date(), tempPasswordExpiresAt: null }
+          : {}),
+        estado: data.estado,
       },
-      select: {
-        id: true,
-        nombreCompleto: true,
-        correo: true,
-        cedula: true,
-        fechaNacimiento: true,
-        telefono: true,
-        rol: true,
-        estado: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+    });
+  }
+
+  async deactivate(id: number): Promise<void> {
+    const existing = await this.db.collaborator.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('Colaborador no encontrado');
+    if (existing.estado === 'INACTIVO') return; // idempotente
+
+    await this.db.collaborator.update({
+      where: { id },
+      data: { estado: 'INACTIVO' as Estado },
     });
   }
 
@@ -175,18 +257,23 @@ export class CollaboratorsService {
     }
   }
 
-  private async ensureUnique(correo: string, cedula: string, ignoreId?: number) {
-    const found = await this.db.collaborator.findFirst({
-      where: {
-        OR: [{ correo }, { cedula }],
-        ...(ignoreId ? { NOT: { id: ignoreId } } : {}),
-      },
-      select: { id: true, correo: true, cedula: true },
-    });
+  async issueTemporaryPassword(id: number): Promise<void> {
+    const user = await this.db.collaborator.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException('Colaborador no encontrado');
 
-    if (found) {
-      if (found.correo === correo) throw new ConflictException('Correo ya está en uso');
-      if (found.cedula === cedula) throw new ConflictException('Cédula ya está en uso');
-    }
+    const tempPwd = generateStrongPassword(12); // NO exponer por respuesta
+    const passwordHash = await bcrypt.hash(tempPwd, BCRYPT_COST);
+
+    const expires = new Date();
+    expires.setDate(expires.getDate() + 7);
+
+    await this.db.collaborator.update({
+      where: { id },
+      data: {
+        passwordHash,
+        tempPasswordExpiresAt: expires,
+        passwordUpdatedAt: new Date(),
+      },
+    });
   }
 }

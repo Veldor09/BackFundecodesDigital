@@ -5,7 +5,7 @@ import { Project } from './Project';
 
 @Entity('project_images')
 export class ProjectImage extends BaseEntity {
-  @ManyToOne(() => Project, p => p.images, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Project, (p) => p.images, { onDelete: 'CASCADE' })
   project: Project;
 
   @Column()

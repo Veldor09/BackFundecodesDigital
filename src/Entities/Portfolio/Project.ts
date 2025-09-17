@@ -19,12 +19,12 @@ export class Project extends BaseEntity {
   @Column({ default: false })
   featured: boolean;
 
-  @OneToMany(() => ProjectImage, i => i.project, { cascade: true })
+  @OneToMany(() => ProjectImage, (i) => i.project, { cascade: true })
   images: ProjectImage[];
 
-  @OneToMany(() => Comment, c => c.project)
+  @OneToMany(() => Comment, (c) => c.project)
   comments: Comment[];
 
-  @OneToMany(() => VolunteerApplication, a => a.project)
+  @OneToMany(() => VolunteerApplication, (a) => a.project)
   applications: VolunteerApplication[];
 }

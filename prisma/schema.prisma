@@ -1,3 +1,4 @@
+// prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
 }
@@ -7,145 +8,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Project {
-  title       String
-  slug        String            @unique
-  summary     String?
-  content     String?
-  coverUrl    String?
-  published   Boolean           @default(false)
-  publishedAt DateTime?
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-  area        String
-  category    String
-  place       String
-  status      ProjectStatus     @default(EN_PROCESO)
-  id          Int               @id @default(autoincrement())
-  documents   ProjectDocument[]
-  images      ProjectImage[]
-
-  @@unique([title, place, area])
-  @@index([status])
-  @@index([updatedAt])
-}
-
-model ProjectImage {
-  id        Int      @id @default(autoincrement())
-  projectId Int
-  url       String
-  alt       String?
-  order     Int      @default(0)
-  createdAt DateTime @default(now())
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  @@index([projectId])
-  @@index([order])
-}
-
-model ProjectDocument {
-  id        Int      @id @default(autoincrement())
-  projectId Int
-  url       String
-  name      String
-  mimeType  String?
-  createdAt DateTime @default(now())
-  size      Int?
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  @@index([projectId])
-}
-
-model News {
-  title       String
-  slug        String    @unique
-  content     String?
-  coverUrl    String?
-  published   Boolean   @default(false)
-  publishedAt DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  id          Int       @id @default(autoincrement())
-}
-
-model ContactMessage {
-  name      String
-  email     String
-  message   String
-  createdAt DateTime @default(now())
-  id        Int      @id @default(autoincrement())
-}
-
-model Volunteer {
-  id             Int      @id @default(autoincrement())
-  nombre         String
-  email          String
-  telefono       String
-  disponibilidad String
-  mensaje        String
-  createdAt      DateTime @default(now())
-}
-
-model InformationalPage {
-  id            String   @id @default("default")
-  vision        Json
-  mission       Json
-  collaborators Json
-  comments      Json
-  updatedAt     DateTime @updatedAt
-}
-
-model User {
-  id        Int        @id @default(autoincrement())
-  email     String     @unique
-  name      String?
-  password  String
-  verified  Boolean    @default(false)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  approved  Boolean    @default(false)
-  roles     UserRole[]
-}
-
-model Role {
-  id          Int          @id @default(autoincrement())
-  name        String       @unique
-  users       UserRole[]
-  permissions Permission[] @relation("PermissionToRole")
-}
-
-model Permission {
-  id          Int     @id @default(autoincrement())
-  key         String  @unique
-  description String?
-  roles       Role[]  @relation("PermissionToRole")
-}
-
-model UserRole {
-  id     Int  @id @default(autoincrement())
-  userId Int
-  roleId Int
-  role   Role @relation(fields: [roleId], references: [id])
-  user   User @relation(fields: [userId], references: [id])
-
-  @@unique([userId, roleId])
-}
-
-model Collaborator {
-  id              Int               @id @default(autoincrement())
-  nombreCompleto  String            @map("nombre_completo")
-  correo          String            @unique @db.VarChar(160)
-  cedula          String            @unique @db.VarChar(25)
-  fechaNacimiento DateTime?         @map("fecha_nacimiento")
-  telefono        String?           @db.VarChar(25)
-  rol             ColaboradorRol    @default(COLABORADOR)
-  passwordHash    String            @map("password_hash") @db.VarChar(255)
-  estado          ColaboradorEstado @default(ACTIVO)
-  createdAt       DateTime          @default(now()) @map("created_at")
-  updatedAt       DateTime          @updatedAt @map("updated_at")
-
-  @@map("colaborador")
-}
 
 enum ProjectStatus {
   EN_PROCESO
@@ -162,4 +24,184 @@ enum ColaboradorRol {
 enum ColaboradorEstado {
   ACTIVO
   INACTIVO
+}
+
+enum EmailStatus {
+  PENDING
+  SENT
+  FAILED
+  RETRYING
+}
+
+
+model Project {
+  id          Int               @id @default(autoincrement())
+  title       String
+  slug        String            @unique
+  summary     String?
+  content     String?
+  coverUrl    String?
+
+  // Campos requeridos
+  category    String
+  place       String
+  area        String
+
+  status      ProjectStatus     @default(EN_PROCESO)
+
+  published   Boolean           @default(false)
+  publishedAt DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  // Relaciones
+  documents   ProjectDocument[]
+  images      ProjectImage[]
+
+  @@unique([title, place, area])
+  @@index([status])
+  @@index([updatedAt])
+}
+
+model ProjectImage {
+  id        Int      @id @default(autoincrement())
+  projectId Int
+  url       String
+  alt       String?
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([projectId])
+  @@index([order])
+}
+
+model ProjectDocument {
+  id        Int      @id @default(autoincrement())
+  projectId Int
+  url       String
+  name      String
+  mimeType  String?
+  size      Int?
+  createdAt DateTime @default(now())
+
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([projectId])
+}
+
+model News {
+  id          Int       @id @default(autoincrement())
+  title       String
+  slug        String    @unique
+  content     String?
+  coverUrl    String?
+  published   Boolean   @default(false)
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model ContactMessage {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String
+  message   String
+  createdAt DateTime @default(now())
+}
+
+model Volunteer {
+  id             Int      @id @default(autoincrement())
+  nombre         String
+  email          String
+  telefono       String
+  disponibilidad String
+  mensaje        String
+  createdAt      DateTime @default(now())
+}
+
+model InformationalPage {
+  id            String   @id @default("default") // solo una fila
+  vision        Json     // { title, content, imageUrl }
+  mission       Json     // { title, content, imageUrl }
+  collaborators Json     // Array de Collaborator (para web pública)
+  comments      Json     // Array de CommentItem
+  updatedAt     DateTime @updatedAt
+}
+
+
+
+model User {
+  id        Int        @id @default(autoincrement())
+  email     String     @unique
+  name      String?
+  password  String
+  verified  Boolean    @default(false)
+  approved  Boolean    @default(false) // bloquear login si la cuenta no está aprobada
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  roles     UserRole[]
+}
+
+model Role {
+  id          Int          @id @default(autoincrement())
+  name        String       @unique
+  users       UserRole[]
+  permissions Permission[] @relation("PermissionToRole")
+}
+
+model Permission {
+  id          Int     @id @default(autoincrement())
+  key         String  @unique // ej: "users.manage", "roles.manage", "projects.update"
+  description String?
+
+  roles       Role[]  @relation("PermissionToRole")
+}
+
+model UserRole {
+  id     Int  @id @default(autoincrement())
+  userId Int
+  roleId Int
+
+  user   User @relation(fields: [userId], references: [id])
+  role   Role @relation(fields: [roleId], references: [id])
+
+  @@unique([userId, roleId]) // evita duplicar el mismo rol para un usuario
+}
+
+
+model Collaborator {
+  id                    Int               @id @default(autoincrement())
+  nombreCompleto        String            @map("nombre_completo")
+  correo                String            @unique @db.VarChar(160)
+  cedula                String            @unique @db.VarChar(25)
+  fechaNacimiento       DateTime?         @map("fecha_nacimiento")
+  telefono              String?           @db.VarChar(25)
+  rol                   ColaboradorRol    @default(COLABORADOR)
+  passwordHash          String            @map("password_hash") @db.VarChar(255)
+  estado                ColaboradorEstado @default(ACTIVO)
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+
+  // Gestión de contraseñas
+  tempPasswordExpiresAt DateTime?         @map("temp_password_expires_at")
+  passwordUpdatedAt     DateTime?         @map("password_updated_at")
+
+  @@map("colaborador") // nombre real de la tabla
+}
+
+
+model EmailLog {
+  id        Int         @id @default(autoincrement())
+  to        String
+  subject   String
+  template  String?
+  payload   Json?
+  status    EmailStatus @default(PENDING)
+  error     String?
+  attempt   Int         @default(0)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
 }

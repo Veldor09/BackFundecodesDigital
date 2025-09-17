@@ -40,7 +40,10 @@ export class NewsController {
 
   // Actualizar -> id numérico
   @Patch(':id')
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: Partial<CreateNewsDto>) {
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: Partial<CreateNewsDto>,
+  ) {
     return this.service.update(id, dto);
   }
 

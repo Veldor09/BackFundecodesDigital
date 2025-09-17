@@ -16,7 +16,8 @@ export const ProjectStatusEnum = {
   FINALIZADO: 'FINALIZADO',
   PAUSADO: 'PAUSADO',
 } as const;
-export type ProjectStatus = typeof ProjectStatusEnum[keyof typeof ProjectStatusEnum];
+export type ProjectStatus =
+  (typeof ProjectStatusEnum)[keyof typeof ProjectStatusEnum];
 
 const trim = (v: any) => (typeof v === 'string' ? v.trim() : v);
 
@@ -77,6 +78,9 @@ export class CreateProjectDto {
   published?: boolean;
 
   @IsOptional()
-  @IsDateString({}, { message: 'publishedAt debe ser una fecha válida (ISO 8601)' })
+  @IsDateString(
+    {},
+    { message: 'publishedAt debe ser una fecha válida (ISO 8601)' },
+  )
   publishedAt?: string;
 }

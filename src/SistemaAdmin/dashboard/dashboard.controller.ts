@@ -11,8 +11,8 @@ export class DashboardController {
 
   @Get('metrics')
   @ApiOperation({ summary: 'Obtener métricas generales del dashboard' })
-  @ApiResponse({ 
-    status: 200, 
+  @ApiResponse({
+    status: 200,
     description: 'Métricas obtenidas exitosamente',
     schema: {
       type: 'object',
@@ -25,14 +25,14 @@ export class DashboardController {
             files: { type: 'object' },
             volunteering: { type: 'object' },
             accounting: { type: 'object' },
-            billing: { type: 'object' }
-          }
+            billing: { type: 'object' },
+          },
         },
         recap: { type: 'object' },
         quickAccess: { type: 'array' },
-        timestamp: { type: 'string' }
-      }
-    }
+        timestamp: { type: 'string' },
+      },
+    },
   })
   @CacheTTL(30000) // 30 segundos de caché
   async getMetrics() {

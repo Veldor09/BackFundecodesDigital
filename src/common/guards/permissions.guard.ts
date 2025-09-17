@@ -20,7 +20,7 @@ const ROLE_PERMS: Record<RoleName, string[]> = {
 function aggregatePerms(roles: string[] = []): string[] {
   const set = new Set<string>();
   for (const r of roles) {
-    const perms = ROLE_PERMS[r as RoleName] ?? [];
+    const perms = ROLE_PERMS[r] ?? [];
     perms.forEach((p) => set.add(p));
   }
   return Array.from(set);

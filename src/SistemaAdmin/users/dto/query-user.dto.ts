@@ -4,22 +4,32 @@ import { Type } from 'class-transformer';
 
 export class QueryUserDto {
   @ApiPropertyOptional({ example: 1 })
-  @IsOptional() @Type(() => Number) @IsInt() @Min(1)
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   page?: number = 1;
 
   @ApiPropertyOptional({ example: 10 })
-  @IsOptional() @Type(() => Number) @IsInt() @Min(1)
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   limit?: number = 10;
 
   @ApiPropertyOptional({ example: 'juan' })
-  @IsOptional() @IsString()
+  @IsOptional()
+  @IsString()
   search?: string;
 
   @ApiPropertyOptional({ example: true })
-  @IsOptional() @Type(() => Boolean) @IsBoolean()
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
   verified?: boolean;
 
   @ApiPropertyOptional({ example: 'ADMIN' })
-  @IsOptional() @IsString()
+  @IsOptional()
+  @IsString()
   role?: string;
 }
