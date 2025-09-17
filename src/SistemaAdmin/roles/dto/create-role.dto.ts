@@ -18,4 +18,3 @@ export class CreateRoleDto {
   @IsString({ each: true })
   permissionKeys?: string[];
 }
-

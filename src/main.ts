@@ -11,16 +11,18 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { json, urlencoded } from 'express';
 import { join } from 'path';
 
-// ⬇️ NUEVO: filtro global de errores estándar
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
+  // Prefijo global (opcional)
+  // app.setGlobalPrefix('api');
+
   // Archivos estáticos: /uploads/*
   app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads/' });
 
-  // (Opcional) Aumentar límite de body si lo necesitas
+  // Body limits
   app.use(json({ limit: '10mb' }));
   app.use(urlencoded({ extended: true, limit: '10mb' }));
 
@@ -31,8 +33,13 @@ async function bootstrap() {
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
-      'Origin', 'X-Requested-With', 'Content-Type', 'Accept',
-      'Authorization', 'Cache-Control', 'Pragma',
+      'Origin',
+      'X-Requested-With',
+      'Content-Type',
+      'Accept',
+      'Authorization',
+      'Cache-Control',
+      'Pragma',
     ],
     exposedHeaders: ['ETag'],
   });
@@ -47,7 +54,7 @@ async function bootstrap() {
     }),
   );
 
-  // ⬇️ NUEVO: aplicar filtro global de excepciones
+  // Filtro global de excepciones
   app.useGlobalFilters(new HttpExceptionFilter());
 
   // Proxy/CDN opcional
@@ -73,7 +80,9 @@ async function bootstrap() {
     )
     .build();
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('docs', app, document);
+  SwaggerModule.setup('docs', app, document, {
+    swaggerOptions: { persistAuthorization: true },
+  });
 
   // Prisma: cierre limpio
   const prisma = app.get(PrismaService);

@@ -1,29 +1,29 @@
 // src/auth/auth.module.ts
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
-import { PassportModule } from '@nestjs/passport';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 
 import { PrismaModule } from '../prisma/prisma.module';
+import { CommonModule } from '../common/common.module'; // 👈 aquí está TokenService
+
 import { AuthService } from './auth.service';
-
-import * as AuthControllerMod from './auth.controller';
-
-import { JwtStrategy } from './jwt.strategy';
+import { AuthController } from './auth.controller';
 
 @Module({
   imports: [
+    ConfigModule, // para leer env en JwtModule.registerAsync
     PrismaModule,
-    PassportModule,
-    JwtModule.register({
-      secret: process.env.JWT_SECRET ?? 'devsecret',
-      signOptions: { expiresIn: '7d' },
+    CommonModule, // 👈 IMPORTANTE: expone TokenService a este módulo
+    JwtModule.registerAsync({
+      inject: [ConfigService],
+      useFactory: (cfg: ConfigService) => ({
+        secret: cfg.get<string>('JWT_SECRET') ?? 'dev-secret',
+        signOptions: { expiresIn: '1d' },
+      }),
     }),
   ],
-  
-  controllers: [AuthControllerMod.AuthController as any],
-
-
-  providers: [AuthService, JwtStrategy],
+  controllers: [AuthController],
+  providers: [AuthService],
   exports: [AuthService],
 })
 export class AuthModule {}

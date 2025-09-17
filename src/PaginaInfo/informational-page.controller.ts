@@ -1,4 +1,3 @@
-
 import { Controller, Get, Put, Body, UseGuards } from '@nestjs/common';
 import { InformationalPageService } from './informational-page.service';
 import { InformationalPageDto } from './dto/informational-page.dto';

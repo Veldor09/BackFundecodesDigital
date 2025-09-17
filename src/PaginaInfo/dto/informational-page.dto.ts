@@ -1,4 +1,3 @@
-
 export class VisionDto {
   title: string;
   content: string;

@@ -68,6 +68,9 @@ export class UpdateProjectDto {
   published?: boolean;
 
   @IsOptional()
-  @IsDateString({}, { message: 'publishedAt debe ser una fecha válida (ISO 8601)' })
+  @IsDateString(
+    {},
+    { message: 'publishedAt debe ser una fecha válida (ISO 8601)' },
+  )
   publishedAt?: string;
 }

@@ -14,10 +14,16 @@ export class Comment extends BaseEntity {
   content: string;
 
   // Comentarios asociados a Project o Post (dos FKs opcionales)
-  @ManyToOne(() => Project, p => p.comments, { onDelete: 'CASCADE', nullable: true })
+  @ManyToOne(() => Project, (p) => p.comments, {
+    onDelete: 'CASCADE',
+    nullable: true,
+  })
   project?: Project;
 
-  @ManyToOne(() => Post, p => p.comments, { onDelete: 'CASCADE', nullable: true })
+  @ManyToOne(() => Post, (p) => p.comments, {
+    onDelete: 'CASCADE',
+    nullable: true,
+  })
   post?: Post;
 
   @Index()

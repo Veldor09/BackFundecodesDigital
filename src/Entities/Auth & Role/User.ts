@@ -19,9 +19,9 @@ export class User extends BaseEntity {
   @Column({ default: true })
   isActive: boolean;
 
-  @OneToMany(() => UserRole, ur => ur.user, { cascade: true })
+  @OneToMany(() => UserRole, (ur) => ur.user, { cascade: true })
   userRoles: UserRole[];
 
-  @OneToMany(() => RefreshToken, t => t.user, { cascade: true })
+  @OneToMany(() => RefreshToken, (t) => t.user, { cascade: true })
   refreshTokens: RefreshToken[];
 }

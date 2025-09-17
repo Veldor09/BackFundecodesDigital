@@ -21,6 +21,6 @@ export class Volunteer extends BaseEntity {
   @Column({ default: true })
   isAvailable: boolean;
 
-  @OneToMany(() => VolunteerApplication, a => a.volunteer)
+  @OneToMany(() => VolunteerApplication, (a) => a.volunteer)
   applications: VolunteerApplication[];
 }

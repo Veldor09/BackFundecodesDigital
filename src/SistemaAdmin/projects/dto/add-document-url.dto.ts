@@ -1,6 +1,12 @@
 // src/SistemaAdmin/projects/dto/add-document-url.dto.ts
 
-import { IsNotEmpty, IsOptional, IsString, IsUrl, IsNumber } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUrl,
+  IsNumber,
+} from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 
 const trim = (v: any) => (typeof v === 'string' ? v.trim() : v);
