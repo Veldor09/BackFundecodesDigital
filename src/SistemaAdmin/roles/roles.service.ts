@@ -1,5 +1,9 @@
 // src/SistemaAdmin/roles/roles.service.ts
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
@@ -44,14 +48,18 @@ export class RolesService {
     if (perms.length !== keys.length) {
       const found = new Set(perms.map((p: any) => p.key));
       const missing = keys.filter((k) => !found.has(k));
-      throw new BadRequestException(`Permisos inexistentes: ${missing.join(', ')}`);
+      throw new BadRequestException(
+        `Permisos inexistentes: ${missing.join(', ')}`,
+      );
     }
     return perms.map((p: any) => p.id);
   }
 
   async create(dto: CreateRoleDto): Promise<RoleView> {
     // unicidad
-    const exists = await this.prisma.role.findUnique({ where: { name: dto.name } });
+    const exists = await this.prisma.role.findUnique({
+      where: { name: dto.name },
+    });
     if (exists) throw new BadRequestException('El rol ya existe');
 
     // 1) crea el rol SIN permissions (evita TS2353 en create)
@@ -85,12 +93,16 @@ export class RolesService {
     // tipa explícitamente el arreglo para evitar never[]
     const results: RoleView[] = [];
     for (const r of roles) {
-      const permissions: PermissionView[] = await (this.prisma as any).permission.findMany({
+      const permissions: PermissionView[] = await (
+        this.prisma as any
+      ).permission.findMany({
         where: { roles: { some: { id: r.id } } },
         select: { id: true, key: true, description: true },
       });
 
-      const usersCount = await this.prisma.userRole.count({ where: { roleId: r.id } });
+      const usersCount = await this.prisma.userRole.count({
+        where: { roleId: r.id },
+      });
 
       results.push({
         id: r.id,
@@ -110,8 +122,11 @@ export class RolesService {
   async update(id: number, dto: UpdateRoleDto): Promise<RoleView> {
     // validar colisión de nombre
     if (dto.name) {
-      const dup = await this.prisma.role.findUnique({ where: { name: dto.name } });
-      if (dup && dup.id !== id) throw new BadRequestException('Ya existe un rol con ese nombre');
+      const dup = await this.prisma.role.findUnique({
+        where: { name: dto.name },
+      });
+      if (dup && dup.id !== id)
+        throw new BadRequestException('Ya existe un rol con ese nombre');
     }
 
     // 1) actualiza nombre (si viene)
@@ -138,9 +153,13 @@ export class RolesService {
   }
 
   async remove(id: number) {
-    const withUsers = await this.prisma.userRole.count({ where: { roleId: id } });
+    const withUsers = await this.prisma.userRole.count({
+      where: { roleId: id },
+    });
     if (withUsers > 0) {
-      throw new BadRequestException('No se puede eliminar: hay usuarios que tienen este rol');
+      throw new BadRequestException(
+        'No se puede eliminar: hay usuarios que tienen este rol',
+      );
     }
     await this.prisma.role.delete({ where: { id } });
     return { message: 'Rol eliminado' };

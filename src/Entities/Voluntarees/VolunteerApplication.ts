@@ -8,10 +8,13 @@ export type ApplicationStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
 @Entity('volunteer_applications')
 export class VolunteerApplication extends BaseEntity {
-  @ManyToOne(() => Volunteer, v => v.applications, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Volunteer, (v) => v.applications, { onDelete: 'CASCADE' })
   volunteer: Volunteer;
 
-  @ManyToOne(() => Project, p => p.applications, { onDelete: 'CASCADE', nullable: true })
+  @ManyToOne(() => Project, (p) => p.applications, {
+    onDelete: 'CASCADE',
+    nullable: true,
+  })
   project?: Project;
 
   @Column({ type: 'text', nullable: true })

@@ -1,5 +1,12 @@
 // src/SistemaAdmin/projects/dto/add-image-url.dto.ts
-import { IsInt, IsNotEmpty, IsOptional, IsString, IsUrl, Min } from 'class-validator';
+import {
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUrl,
+  Min,
+} from 'class-validator';
 import { Transform } from 'class-transformer';
 
 const trim = (v: any) => (typeof v === 'string' ? v.trim() : v);

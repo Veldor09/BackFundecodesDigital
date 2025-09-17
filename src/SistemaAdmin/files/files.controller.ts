@@ -1,4 +1,14 @@
-import { Controller, Post, UploadedFile, UseInterceptors, Delete, Body, Get, Param, Res } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  UploadedFile,
+  UseInterceptors,
+  Delete,
+  Body,
+  Get,
+  Param,
+  Res,
+} from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { FilesService } from './files.service';
 import { Response } from 'express';
@@ -27,16 +37,19 @@ export class FilesController {
   }
 
   @Get('download/:filename')
-  async downloadFile(@Param('filename') filename: string, @Res() res: Response) {
+  async downloadFile(
+    @Param('filename') filename: string,
+    @Res() res: Response,
+  ) {
     try {
       const filePath = join(process.cwd(), 'uploads', filename);
       const fileStream = createReadStream(filePath);
-      
+
       res.set({
         'Content-Disposition': `attachment; filename="${filename}"`,
         'Content-Type': 'application/octet-stream',
       });
-      
+
       fileStream.pipe(res);
     } catch (error) {
       // ➡️ CORRECCIÓN: Manejo de error unknown
@@ -53,11 +66,11 @@ export class FilesController {
     try {
       const filePath = join(process.cwd(), 'uploads', filename);
       const fileStream = createReadStream(filePath);
-      
+
       // Detectar tipo MIME básico
       const extension = filename.split('.').pop()?.toLowerCase();
       let contentType = 'application/octet-stream';
-      
+
       switch (extension) {
         case 'pdf':
           contentType = 'application/pdf';
@@ -76,12 +89,12 @@ export class FilesController {
           contentType = 'text/plain';
           break;
       }
-      
+
       res.set({
         'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=3600'
+        'Cache-Control': 'public, max-age=3600',
       });
-      
+
       fileStream.pipe(res);
     } catch (error) {
       // ➡️ CORRECCIÓN: Manejo de error unknown

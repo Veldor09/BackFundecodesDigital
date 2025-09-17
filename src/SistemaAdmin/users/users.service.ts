@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -11,7 +15,9 @@ export class UsersService {
   constructor(private prisma: PrismaService) {}
 
   async create(dto: CreateUserDto) {
-    const exists = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    const exists = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
     if (exists) throw new BadRequestException('El correo ya está en uso');
 
     const password = await bcrypt.hash(dto.password, 10);
@@ -91,7 +97,9 @@ export class UsersService {
 
     // Si quieren actualizar roles desde este endpoint:
     if (dto.roles) {
-      const current = await this.prisma.userRole.findMany({ where: { userId: id } });
+      const current = await this.prisma.userRole.findMany({
+        where: { userId: id },
+      });
       if (current.length) {
         await this.prisma.userRole.deleteMany({ where: { userId: id } });
       }
@@ -101,7 +109,9 @@ export class UsersService {
           create: { name: r },
           update: {},
         });
-        await this.prisma.userRole.create({ data: { userId: id, roleId: role.id } });
+        await this.prisma.userRole.create({
+          data: { userId: id, roleId: role.id },
+        });
       }
     }
 
@@ -136,17 +146,25 @@ export class UsersService {
       create: { name: roleName },
       update: {},
     });
-    const exists = await this.prisma.userRole.findFirst({ where: { userId: id, roleId: role.id } });
+    const exists = await this.prisma.userRole.findFirst({
+      where: { userId: id, roleId: role.id },
+    });
     if (!exists) {
-      await this.prisma.userRole.create({ data: { userId: id, roleId: role.id } });
+      await this.prisma.userRole.create({
+        data: { userId: id, roleId: role.id },
+      });
     }
     return this.findOne(id);
   }
 
   async removeRole(id: number, roleName: string) {
-    const role = await this.prisma.role.findUnique({ where: { name: roleName } });
+    const role = await this.prisma.role.findUnique({
+      where: { name: roleName },
+    });
     if (!role) return this.findOne(id);
-    const rel = await this.prisma.userRole.findFirst({ where: { userId: id, roleId: role.id } });
+    const rel = await this.prisma.userRole.findFirst({
+      where: { userId: id, roleId: role.id },
+    });
     if (rel) await this.prisma.userRole.delete({ where: { id: rel.id } });
     return this.findOne(id);
   }
@@ -175,7 +193,9 @@ export class UsersService {
     if (roles.length !== dto.roleIds.length) {
       const found = new Set(roles.map((r) => r.id));
       const missing = dto.roleIds.filter((id) => !found.has(id));
-      throw new BadRequestException(`Roles inexistentes: ${missing.join(', ')}`);
+      throw new BadRequestException(
+        `Roles inexistentes: ${missing.join(', ')}`,
+      );
     }
 
     await this.prisma.userRole.createMany({

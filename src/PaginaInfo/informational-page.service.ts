@@ -47,14 +47,16 @@ export class InformationalPageService {
   private async createDefault(): Promise<InformationalPageDto> {
     const defaultData: InformationalPageDto = {
       vision: {
-        title: "VISIÓN",
-        content: "Nos esforzamos por impulsar comunidades costeras prósperas...",
-        imageUrl: "/Imagenes/Vision.jpg",
+        title: 'VISIÓN',
+        content:
+          'Nos esforzamos por impulsar comunidades costeras prósperas...',
+        imageUrl: '/Imagenes/Vision.jpg',
       },
       mission: {
-        title: "MISIÓN",
-        content: "Trabajamos de manera colaborativa con comunidades costeras...",
-        imageUrl: "/Imagenes/Mision.jpg",
+        title: 'MISIÓN',
+        content:
+          'Trabajamos de manera colaborativa con comunidades costeras...',
+        imageUrl: '/Imagenes/Mision.jpg',
       },
       collaborators: [],
       comments: [],

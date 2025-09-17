@@ -20,6 +20,6 @@ export class Post extends BaseEntity {
   @Column({ default: false })
   published: boolean;
 
-  @OneToMany(() => Comment, c => c.post)
+  @OneToMany(() => Comment, (c) => c.post)
   comments: Comment[];
 }

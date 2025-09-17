@@ -1,20 +1,18 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
   Param,
   ParseIntPipe,
   Patch,
   Post,
   Query,
+  HttpCode,
 } from '@nestjs/common';
 import { CollaboratorsService } from './collaborators.service';
 import { CreateCollaboratorDto } from './dto/create-collaborator.dto';
 import { UpdateCollaboratorDto } from './dto/update-collaborator.dto';
 import { ListCollaboratorsQuery } from './dto/list-collaborators.query';
-
-
 import { CollaboratorRol } from './dto/collaborator-rol.enum';
 import { CollaboratorEstado } from './dto/collaborator-estado.enum';
 
@@ -23,8 +21,8 @@ export class CollaboratorsController {
   constructor(private readonly service: CollaboratorsService) {}
 
   @Post()
-  create(@Body() dto: CreateCollaboratorDto) {
-    return this.service.create({
+  async create(@Body() dto: CreateCollaboratorDto) {
+    const created = await this.service.create({
       nombreCompleto: dto.nombreCompleto,
       correo: dto.correo,
       cedula: dto.cedula,
@@ -34,14 +32,15 @@ export class CollaboratorsController {
       password: dto.password,
       estado: (dto.estado as CollaboratorEstado) ?? undefined,
     });
+    return created;
   }
 
   @Get()
   list(@Query() q: ListCollaboratorsQuery) {
     return this.service.list({
       q: q.q,
-      rol: q.rol as CollaboratorRol | undefined,
-      estado: q.estado as CollaboratorEstado | undefined,
+      rol: q.rol,
+      estado: q.estado,
       page: q.page ?? 1,
       pageSize: q.pageSize ?? 10,
     });
@@ -53,21 +52,35 @@ export class CollaboratorsController {
   }
 
   @Patch(':id')
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateCollaboratorDto) {
-    return this.service.update(id, {
+  @HttpCode(204)
+  async update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateCollaboratorDto,
+  ) {
+    await this.service.update(id, {
       nombreCompleto: dto.nombreCompleto,
       correo: dto.correo,
       cedula: dto.cedula,
       fechaNacimiento: dto.fechaNacimiento,
       telefono: dto.telefono,
-      rol: dto.rol as CollaboratorRol | undefined,
+      rol: dto.rol,
       password: dto.password,
-      estado: dto.estado as CollaboratorEstado | undefined,
+      estado: dto.estado,
     });
+    return;
   }
 
-  @Delete(':id')
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.service.remove(id);
+  @Patch(':id/deactivate')
+  @HttpCode(204)
+  async deactivate(@Param('id', ParseIntPipe) id: number) {
+    await this.service.deactivate(id);
+    return;
+  }
+
+  @Patch(':id/issue-temp-password')
+  @HttpCode(204)
+  async issueTempPassword(@Param('id', ParseIntPipe) id: number) {
+    await this.service.issueTemporaryPassword(id);
+    return;
   }
 }

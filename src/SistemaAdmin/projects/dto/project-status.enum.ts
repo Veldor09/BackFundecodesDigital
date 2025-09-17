@@ -5,5 +5,5 @@ export const ProjectStatusEnum = {
   PAUSADO: 'PAUSADO',
 } as const;
 
-export type ProjectStatus = typeof ProjectStatusEnum[keyof typeof ProjectStatusEnum];
-
+export type ProjectStatus =
+  (typeof ProjectStatusEnum)[keyof typeof ProjectStatusEnum];
