@@ -48,44 +48,62 @@ export class ProjectsController {
   constructor(private readonly service: ProjectsService) {}
 
   // -------------------- LISTA --------------------
+  @ApiQuery({
+    name: 'includeVols',
+    required: false,
+    description:
+      'Incluye asignaciones (voluntarios) solo cuando se pida. Valores: 1/true | 0/false',
+    schema: { type: 'string', enum: ['0', '1', 'true', 'false'] },
+  })
   @Get()
   list(@Query() query: ListProjectsQuery) {
     return this.service.list(query);
   }
 
-  // -------------------- DETALLE con caché HTTP + ETag --------------------
-  @ApiQuery({
-    name: 'ttl',
-    required: false,
-    description:
-      'Tiempo de cacheo en segundos (Cache-Control: public, max-age=ttl). Default 60.',
-    schema: { type: 'integer', default: 60, minimum: 0 },
-  })
-  @Get(':idOrSlug')
-  async get(
-    @Param('idOrSlug') idOrSlug: string,
-    @Query('ttl', new DefaultValuePipe('60')) ttl: string,
-    @Res() res: Response,
-  ) {
-    const data = await this.service.findOne(idOrSlug);
+ // -------------------- DETALLE con caché HTTP + ETag --------------------
+@ApiQuery({
+  name: 'ttl',
+  required: false,
+  description:
+    'Tiempo de cacheo en segundos (Cache-Control: public, max-age=ttl). Default 60.',
+  schema: { type: 'integer', default: 60, minimum: 0 },
+})
+@ApiQuery({
+  name: 'includeVols',
+  required: false,
+  description:
+    'Incluye asignaciones (voluntarios) solo cuando se pida. Valores: 1/true | 0/false',
+  schema: { type: 'string', enum: ['0', '1', 'true', 'false'] },
+})
+@Get(':idOrSlug')
+async get(
+  @Param('idOrSlug') idOrSlug: string,
+  @Query('ttl', new DefaultValuePipe('60')) ttl: string,
+  @Query('includeVols') includeVols: string | undefined, // <— SIN "?"
+  @Res() res: Response,
+) {
+  const data = await this.service.findOne(
+    idOrSlug,
+    includeVols === '1' || includeVols === 'true',
+  );
 
-    const seconds = Math.max(0, Number.isFinite(+ttl) ? +ttl : 60);
-    res.setHeader(
-      'Cache-Control',
-      `public, max-age=${seconds}, stale-while-revalidate=120`,
-    );
+  const seconds = Math.max(0, Number.isFinite(+ttl) ? +ttl : 60);
+  res.setHeader(
+    'Cache-Control',
+    `public, max-age=${seconds}, stale-while-revalidate=120`,
+  );
 
-    const etagBase = data.updatedAt
-      ? new Date(data.updatedAt).toISOString()
-      : '';
-    const etag = `"proj-${data.id}-${etagBase}"`;
-    res.setHeader('ETag', etag);
+  const etagBase = (data as any).updatedAt
+    ? new Date((data as any).updatedAt).toISOString()
+    : '';
+  const etag = `"proj-${(data as any).id}-${etagBase}"`;
+  res.setHeader('ETag', etag);
 
-    const inm = res.req.headers['if-none-match'];
-    if (inm && inm === etag) return res.status(304).send();
+  const inm = res.req.headers['if-none-match'];
+  if (inm && inm === etag) return res.status(304).send();
 
-    return res.status(200).json(data);
-  }
+  return res.status(200).json(data);
+}
 
   // -------------------- CREAR --------------------
   @Post()
@@ -93,7 +111,45 @@ export class ProjectsController {
     return this.service.create(dto);
   }
 
-  // -------------------- AGREGAR IMAGEN POR URL (Drive/CDN) --------------------
+  // -------------------- ACTUALIZAR --------------------
+  @Patch(':id')
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateProjectDto) {
+    return this.service.update(id, dto);
+  }
+
+  // -------------------- ELIMINAR --------------------
+  @Delete(':id')
+  remove(@Param('id', ParseIntPipe) id: number) {
+    return this.service.remove(id);
+  }
+
+  // ===================== ASIGNACIONES =====================
+
+  /**
+   * Asignar voluntario a proyecto
+   * POST /projects/:id/volunteers/:voluntarioId
+   */
+  @Post(':id/volunteers/:voluntarioId')
+  assignVolunteer(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('voluntarioId', ParseIntPipe) voluntarioId: number,
+  ) {
+    return this.service.assignVolunteer(id, voluntarioId);
+  }
+
+  /**
+   * Quitar voluntario de proyecto
+   * DELETE /projects/:id/volunteers/:voluntarioId
+   */
+  @Delete(':id/volunteers/:voluntarioId')
+  unassignVolunteer(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('voluntarioId', ParseIntPipe) voluntarioId: number,
+  ) {
+    return this.service.unassignVolunteer(id, voluntarioId);
+  }
+
+  // ===================== IMÁGENES (por URL) =====================
   @Post(':id/add-image-url')
   @ApiBody({
     description: 'Agregar imagen por URL al proyecto (sin subir archivo)',
@@ -116,41 +172,6 @@ export class ProjectsController {
       alt: (body.alt ?? '').trim() || undefined,
       order: safeOrder,
     });
-  }
-
-  // -------------------- AGREGAR DOCUMENTO POR URL --------------------
-  @Post(':id/add-document-url')
-  @ApiBody({
-    description: 'Agregar documento por URL al proyecto (sin subir archivo)',
-    type: AddDocumentUrlDto,
-  })
-  async addDocumentByUrl(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() body: AddDocumentUrlDto,
-  ) {
-    try {
-      if (!body?.url) throw new BadRequestException('url es requerido');
-      if (!body?.name) throw new BadRequestException('name es requerido');
-
-      return await this.service.addDocument(id, body);
-    } catch (error) {
-      // log visible en servidor
-
-      console.error('❌ Error en addDocumentByUrl:', error);
-      throw error;
-    }
-  }
-
-  // -------------------- ACTUALIZAR --------------------
-  @Patch(':id')
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateProjectDto) {
-    return this.service.update(id, dto);
-  }
-
-  // -------------------- ELIMINAR --------------------
-  @Delete(':id')
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.service.remove(id);
   }
 
   // ===================== DOCUMENTOS: ENDPOINTS =====================
@@ -264,11 +285,9 @@ export class ProjectsController {
     @Query('name') name?: string,
     @Body('url') url?: string,
   ) {
-    // Soporta ambos: ?name= y body.url para compatibilidad
     const raw = name ?? url ?? '';
     if (!raw)
       throw new BadRequestException('name (query) o url (body) es requerido');
-    // Normaliza: si viene una URL, extrae el nombre
     const base = raw.includes('/') ? (raw.split('/').pop() ?? '') : raw;
     const decoded = decodeURIComponent(base);
     return this.service.removeDocumentByName(id, decoded);
