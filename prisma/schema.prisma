@@ -111,7 +111,7 @@ model ContactMessage {
   createdAt DateTime @default(now())
 }
 
-model Volunteer {
+model VolunteerForm {
   id             Int      @id @default(autoincrement())
   nombre         String
   email          String
@@ -204,4 +204,20 @@ model EmailLog {
   attempt   Int         @default(0)
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
+}
+
+model Voluntario {
+  id              Int      @id @default(autoincrement())
+  tipoDocumento   String   @map("tipo_documento") // ej: "Cédula costarricense"
+  numeroDocumento String   @unique @map("numero_documento") @db.VarChar(25)
+  nombreCompleto  String   @map("nombre_completo")
+  email           String   @unique @db.VarChar(160)
+  telefono        String?  @db.VarChar(25)
+  fechaNacimiento DateTime? @map("fecha_nacimiento")
+  fechaIngreso    DateTime @default(now()) @map("fecha_ingreso")
+  estado          ColaboradorEstado @default(ACTIVO)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("voluntario")
 }

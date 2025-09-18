@@ -13,11 +13,13 @@ import { FilesModule } from './SistemaAdmin/files/files.module';
 import { UsersModule } from './SistemaAdmin/users/users.module';
 import { RolesModule } from './SistemaAdmin/roles/roles.module';
 import { CollaboratorsModule } from './SistemaAdmin/collaborator/collaborators.module';
+import { VolunteerModule } from './SistemaAdmin/Volunteer/volunteer.module';
+
 
 // Público
 import { NewsModule } from './news/news.module';
 import { ContactModule } from './PaginaInfo/contact/contact.module';
-import { VolunteersModule } from './PaginaInfo/volunteers/volunteers.module';
+import { VolunteersFormModule } from './PaginaInfo/volunteers/volunteer-form.module';
 import { InformationalPageModule } from './PaginaInfo/informational-page.module';
 
 // Auth
@@ -78,11 +80,12 @@ const isDev = (process.env.NODE_ENV || 'development') !== 'production';
     UsersModule,
     RolesModule,
     CollaboratorsModule,
+    VolunteerModule,
 
     // Público
     NewsModule,
     ContactModule,
-    VolunteersModule,
+    VolunteersFormModule,
     InformationalPageModule,
 
     // Auth
