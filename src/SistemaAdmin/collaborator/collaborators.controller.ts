@@ -51,6 +51,30 @@ export class CollaboratorsController {
     return this.service.findById(id);
   }
 
+  /**
+   * Endpoint auxiliar de verificación previa:
+   * Devuelve { safe: boolean, reason?: string } indicando si es seguro
+   * aplicar un cambio de rol/estado sin dejar al sistema sin admins activos.
+   *
+   * Uso típico desde el front:
+   *   GET /collaborators/123/safety?nextRol=COLABORADOR&nextEstado=ACTIVO
+   */
+  @Get(':id/safety')
+  async checkSafety(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('nextRol') nextRol?: CollaboratorRol,
+    @Query('nextEstado') nextEstado?: CollaboratorEstado,
+  ) {
+    // Si no pasan valores, usamos los actuales para no romper:
+    const current = await this.service.findById(id);
+    const rol = (nextRol as CollaboratorRol) ?? (current.rol as CollaboratorRol);
+    const estado =
+      (nextEstado as CollaboratorEstado) ??
+      (current.estado as CollaboratorEstado);
+
+    return this.service.checkAdminChangeSafety(id, rol, estado);
+  }
+
   @Patch(':id')
   @HttpCode(204)
   async update(
@@ -67,20 +91,20 @@ export class CollaboratorsController {
       password: dto.password,
       estado: dto.estado,
     });
-    return;
+    return; // 204 sin body
   }
 
   @Patch(':id/deactivate')
   @HttpCode(204)
   async deactivate(@Param('id', ParseIntPipe) id: number) {
     await this.service.deactivate(id);
-    return;
+    return; // 204 sin body
   }
 
   @Patch(':id/issue-temp-password')
   @HttpCode(204)
   async issueTempPassword(@Param('id', ParseIntPipe) id: number) {
     await this.service.issueTemporaryPassword(id);
-    return;
+    return; // 204 sin body
   }
 }
