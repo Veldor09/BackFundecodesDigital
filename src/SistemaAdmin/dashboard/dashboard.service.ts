@@ -33,8 +33,8 @@ export class DashboardService {
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
       const [totalVolunteers, recentVolunteers] = await Promise.all([
-        this.prisma.volunteer.count(),
-        this.prisma.volunteer.count({
+        this.prisma.volunteerForm.count(),
+        this.prisma.volunteerForm.count({
           where: { createdAt: { gte: thirtyDaysAgo } },
         }),
       ]);
