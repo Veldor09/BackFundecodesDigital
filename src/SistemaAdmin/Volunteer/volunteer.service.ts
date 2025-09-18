@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateVolunteerDto } from './dto/create-volunteer.dto';
 import { UpdateVolunteerDto } from './dto/update-volunteer.dto';
@@ -42,10 +42,14 @@ export class VolunteerService {
   }
 
   async findOne(id: number) {
-    return this.prisma.voluntario.findUnique({ where: { id } });
+    const found = await this.prisma.voluntario.findUnique({ where: { id } });
+    if (!found) throw new NotFoundException(`Voluntario ${id} no encontrado`);
+    return found;
   }
 
   async update(id: number, data: UpdateVolunteerDto) {
+    // valida existencia primero para que el error sea claro
+    await this.findOne(id);
     return this.prisma.voluntario.update({
       where: { id },
       data: {
@@ -62,9 +66,20 @@ export class VolunteerService {
   }
 
   async toggleStatus(id: number, estado: 'ACTIVO' | 'INACTIVO') {
+    // valida existencia primero
+    await this.findOne(id);
     return this.prisma.voluntario.update({
       where: { id },
       data: { estado },
+    });
+  }
+
+  // 👇 NUEVO: eliminar (borrado físico)
+  async remove(id: number) {
+    // valida existencia primero para lanzar 404 si no existe
+    await this.findOne(id);
+    return this.prisma.voluntario.delete({
+      where: { id },
     });
   }
 }
