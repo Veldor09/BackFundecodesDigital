@@ -107,7 +107,10 @@ model User {
   approved  Boolean    @default(false)
 
   roles     UserRole[]
-  emailLogs EmailLog[]        // <-- relación
+  emailLogs EmailLog[]
+
+  // ⬇️ agrega esta línea para cerrar la relación con PasswordChangeLog
+  passwordChangeLogs PasswordChangeLog[]
 }
 
 model Role {
@@ -187,9 +190,12 @@ model Voluntario {
   fechaNacimiento DateTime?         @map("fecha_nacimiento")
   fechaIngreso    DateTime          @default(now()) @map("fecha_ingreso")
   estado          ColaboradorEstado @default(ACTIVO)
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-  assignments ProjectVolunteer[]
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  assignments     ProjectVolunteer[]
+
+  // ⬇️ agrega esta línea para cerrar la relación con Sancion
+  sanciones       Sancion[]
 
   @@map("voluntario")
 }
@@ -244,4 +250,39 @@ model ProjectVolunteer {
 
   @@id([projectId, voluntarioId]) // evita duplicados
   @@map("project_volunteer")
+}
+
+
+enum SancionTipo {
+  LEVE
+  GRAVE
+  MUY_GRAVE
+  EXTREMADAMENTE_GRAVE
+}
+
+enum SancionEstado {
+  ACTIVA
+  EXPIRADA
+  REVOCADA
+}
+
+model Sancion {
+  id               Int            @id @default(autoincrement())
+  voluntarioId     Int
+  tipo             SancionTipo
+  motivo           String
+  descripcion      String?
+  fechaInicio      DateTime
+  fechaVencimiento DateTime?
+  estado           SancionEstado  @default(ACTIVA)
+  creadaPor        String?
+  revocadaPor      String?
+  fechaRevocacion  DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  voluntario       Voluntario     @relation(fields: [voluntarioId], references: [id])
+
+  @@index([voluntarioId])
+  @@index([estado])
 }
