@@ -14,6 +14,7 @@ import { UsersModule } from './SistemaAdmin/users/users.module';
 import { RolesModule } from './SistemaAdmin/roles/roles.module';
 import { CollaboratorsModule } from './SistemaAdmin/collaborator/collaborators.module';
 import { VolunteerModule } from './SistemaAdmin/Volunteer/volunteer.module';
+import { SancionesModule } from './SistemaAdmin/sanciones/sanciones.module';
 
 // Público
 import { NewsModule } from './news/news.module';
@@ -80,6 +81,7 @@ import { CommonModule } from './common/common.module';
     RolesModule,
     CollaboratorsModule,
     VolunteerModule,
+    SancionesModule,
 
     // Público
     NewsModule,
