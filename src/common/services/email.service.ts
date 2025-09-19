@@ -22,17 +22,50 @@ export class EmailService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
   ) {
-    // === SMTP (Gmail con App Password) ===
+    // === SMTP config desde .env ===
     const host = this.config.get<string>('MAIL_HOST') || 'smtp.gmail.com';
     const port = Number(this.config.get<string>('MAIL_PORT') || '587');
     const user = this.config.get<string>('MAIL_USERNAME') || '';
     const pass = this.config.get<string>('MAIL_PASSWORD') || '';
 
+    // 465 => SSL directo (secure=true)
+    const secureFromEnv = (this.config.get<string>('MAIL_SECURE') || 'false')
+      .toLowerCase() === 'true';
+    const secure = secureFromEnv || port === 465;
+
+    // STARTTLS solo aplica cuando secure=false
+    const requireTLSFromEnv = (this.config.get<string>('MAIL_REQUIRE_TLS') || 'false')
+      .toLowerCase() === 'true';
+    const requireTLS = !secure && requireTLSFromEnv;
+
+    const mailDebug = (this.config.get<string>('MAIL_DEBUG') || 'false')
+      .toLowerCase() === 'true';
+
     this.transporter = nodemailer.createTransport({
       host,
       port,
-      secure: false, // STARTTLS en 587
+      secure,               // 465:true (SSL), 587:false (STARTTLS)
       auth: user && pass ? { user, pass } : undefined,
+
+      // Estabilidad
+      pool: true,
+      maxConnections: 3,
+      maxMessages: 100,
+
+      // Evitar "Greeting never received"
+      connectionTimeout: 30_000, // TCP connect
+      greetingTimeout: 20_000,   // esperar banner 220
+      socketTimeout: 30_000,
+
+      // STARTTLS si secure=false y así lo pediste
+      requireTLS,
+
+      // TLS moderno
+      tls: { minVersion: 'TLSv1.2' },
+
+      // Debug
+      logger: mailDebug,
+      debug: mailDebug,
     });
 
     this.transporter
@@ -46,7 +79,7 @@ export class EmailService {
     const sendEmailsEnv = (this.config.get<string>('SEND_EMAILS') ?? 'true').toLowerCase();
     this.sendEmails = sendEmailsEnv !== 'false';
 
-    // Remitente (para Gmail, ideal que sea el mismo MAIL_USERNAME)
+    // Remitente (ideal: mismo MAIL_USERNAME)
     this.from =
       this.config.get<string>('MAIL_FROM') ||
       (user ? `Fundecodes <${user}>` : 'Fundecodes <no-reply@test.mlsender.net>');
@@ -59,7 +92,7 @@ export class EmailService {
       this.config.get<string>('FRONTEND_RESET_PASSWORD_PATH') || '/reset-password';
   }
 
-  // Prisma (flexible por si los tipos aún no incluyen EmailLog)
+  // Prisma (tolerante si EmailLog aún no existe)
   private get db(): any {
     return this.prisma as any;
   }
@@ -109,7 +142,10 @@ export class EmailService {
       try {
         await this.safeLogUpdate(
           { id: logId },
-          { attempt, status: attempt === 1 ? ('PENDING' as EmailLogStatus) : ('RETRYING' as EmailLogStatus) },
+          {
+            attempt,
+            status: attempt === 1 ? ('PENDING' as EmailLogStatus) : ('RETRYING' as EmailLogStatus),
+          },
         );
         await sendFn();
         await this.safeLogUpdate({ id: logId }, { status: 'SENT' as EmailLogStatus });
@@ -119,7 +155,8 @@ export class EmailService {
         await this.safeLogUpdate(
           { id: logId },
           {
-            status: attempt < MAX_ATTEMPTS ? ('RETRYING' as EmailLogStatus) : ('FAILED' as EmailLogStatus),
+            status:
+              attempt < MAX_ATTEMPTS ? ('RETRYING' as EmailLogStatus) : ('FAILED' as EmailLogStatus),
             error: msg.slice(0, 1000),
           },
         );
@@ -163,7 +200,6 @@ export class EmailService {
       status: 'PENDING' as EmailLogStatus,
     });
 
-    // Modo dev (o envío deshabilitado)
     if (!this.sendEmails) {
       this.logger.warn(`[DEV-EMAIL OFF] To: ${to}`);
       this.logger.warn(`[DEV-EMAIL OFF] Subject: ${subject}`);
@@ -172,7 +208,6 @@ export class EmailService {
       return;
     }
 
-    // Envío real con reintentos
     await this.sendWithRetry(
       () =>
         this.transporter.sendMail({

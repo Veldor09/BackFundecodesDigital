@@ -1,4 +1,4 @@
-// src/collaborators/collaborators.service.ts
+// src/SistemaAdmin/collaborator/collaborators.service.ts
 import {
   Injectable,
   ConflictException,
@@ -8,7 +8,10 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { generateStrongPassword } from '../../common/utils/password.util';
-import { WelcomeFlowService } from '../../common/services/welcome-flow.service';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
+import * as crypto from 'crypto';
+import { EmailService } from '../../common/services/email.service';
 
 const BCRYPT_COST = 12;
 
@@ -22,27 +25,32 @@ type CreateData = {
   fechaNacimiento?: string | null;
   telefono?: string | null;
   rol?: Rol;
-  password: string;
+  /** opcional: si no viene, invitamos por email para setear contraseña */
+  password?: string;
   estado?: Estado;
 };
 
-type UpdateData = Partial<Omit<CreateData, 'password'>> & {
-  password?: string;
-};
+type UpdateData = Partial<Omit<CreateData, 'password'>> & { password?: string };
 
 @Injectable()
 export class CollaboratorsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly welcome: WelcomeFlowService,
+    private readonly config: ConfigService,
+    private readonly jwt: JwtService,
+    private readonly email: EmailService,
   ) {}
 
-  // Acceso flexible mientras los tipos de Prisma se regeneran
+  // Acceso flexible a tablas personalizadas mientras regeneras tipos
   private get db(): any {
     return this.prisma as any;
   }
 
-  // ----------------- Validaciones básicas -----------------
+  // ----------------- Helpers -----------------
+  private normalizeEmail(v?: string | null) {
+    return (v ?? '').trim().toLowerCase();
+  }
+
   private ensureAge18(fechaISO?: string | null) {
     if (!fechaISO) return;
     const d = new Date(fechaISO);
@@ -62,11 +70,8 @@ export class CollaboratorsService {
     }
   }
 
-  private async ensureUnique(
-    correo: string,
-    cedula: string,
-    ignoreId?: number,
-  ) {
+  private async ensureUnique(correoRaw: string, cedula: string, ignoreId?: number) {
+    const correo = this.normalizeEmail(correoRaw);
     const found = await this.db.collaborator.findFirst({
       where: {
         OR: [{ correo }, { cedula }],
@@ -75,7 +80,7 @@ export class CollaboratorsService {
       select: { id: true, correo: true, cedula: true },
     });
     if (found) {
-      if (found.correo === correo)
+      if (this.normalizeEmail(found.correo) === correo)
         throw new ConflictException('Correo ya está en uso');
       if (found.cedula === cedula)
         throw new ConflictException('Cédula ya está en uso');
@@ -128,50 +133,139 @@ export class CollaboratorsService {
     }
   }
 
-  // ----------------- CRUD -----------------
-  async create(data: CreateData) {
-    await this.ensureUnique(data.correo, data.cedula);
-    this.ensureAge18(data.fechaNacimiento);
+  /** Asegura que el user exista y tenga el rol; devuelve { id, email } */
+  private async ensureUserAndRole(
+    tx: any,
+    email: string,
+    name: string | null | undefined,
+    rol: Rol,
+    passwordHash?: string,
+  ): Promise<{ id: number; email: string }> {
+    const correo = this.normalizeEmail(email);
 
-    const passwordHash = await bcrypt.hash(data.password, BCRYPT_COST);
-
-    const created = await this.db.collaborator.create({
-      data: {
-        nombreCompleto: data.nombreCompleto,
-        correo: data.correo,
-        cedula: data.cedula,
-        fechaNacimiento: data.fechaNacimiento
-          ? new Date(data.fechaNacimiento)
-          : null,
-        telefono: data.telefono ?? null,
-        rol: (data.rol ?? 'COLABORADOR') as Rol,
-        passwordHash,
-        estado: (data.estado ?? 'ACTIVO') as Estado,
-        passwordUpdatedAt: new Date(),
-        tempPasswordExpiresAt: null,
-      },
-      select: {
-        id: true,
-        nombreCompleto: true,
-        correo: true,
-        cedula: true,
-        fechaNacimiento: true,
-        telefono: true,
-        rol: true,
-        estado: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+    // Busca user por email (shape ligero)
+    let user = await tx.user.findUnique({
+      where: { email: correo },
+      select: { id: true, email: true },
     });
 
-    // Correo de bienvenida con link set-password (no bloquea la respuesta)
-    void this.welcome
-      .onCollaboratorCreated({
-        id: created.id,
-        correo: created.correo,
-        nombreCompleto: created.nombreCompleto,
-      })
-      .catch(() => {});
+    if (!user) {
+      // Si no hay hash, generamos temporal
+      const hash = passwordHash ?? (await bcrypt.hash(generateStrongPassword(12), BCRYPT_COST));
+      user = await tx.user.create({
+        data: {
+          email: correo,
+          name: name ?? correo.split('@')[0],
+          approved: true,
+          verified: false,
+          password: hash, // Prisma exige string
+        },
+        select: { id: true, email: true },
+      });
+    } else if (passwordHash) {
+      await tx.user.update({
+        where: { id: user.id },
+        data: { password: passwordHash, name: name ?? undefined },
+      });
+    } else if (name !== undefined) {
+      await tx.user.update({
+        where: { id: user.id },
+        data: { name: name ?? undefined },
+      });
+    }
+
+    // Rol
+    const role = await tx.role.upsert({
+      where: { name: rol },
+      create: { name: rol },
+      update: {},
+      select: { id: true },
+    });
+    const rel = await tx.userRole.findFirst({
+      where: { userId: user.id, roleId: role.id },
+      select: { id: true },
+    });
+    if (!rel) {
+      await tx.userRole.create({ data: { userId: user.id, roleId: role.id } });
+    }
+
+    return user; // { id, email }
+  }
+
+  // ----------------- CRUD -----------------
+  async create(data: CreateData) {
+    const correo = this.normalizeEmail(data.correo);
+    await this.ensureUnique(correo, data.cedula);
+    this.ensureAge18(data.fechaNacimiento);
+
+    const plainPassword =
+      data.password && data.password.trim().length >= 8
+        ? data.password.trim()
+        : generateStrongPassword(12);
+    const passwordHash = await bcrypt.hash(plainPassword, BCRYPT_COST);
+
+    const { created, user } = await this.prisma.$transaction(async (tx) => {
+      const created = await (tx as any).collaborator.create({
+        data: {
+          nombreCompleto: data.nombreCompleto,
+          correo,
+          cedula: data.cedula,
+          fechaNacimiento: data.fechaNacimiento ? new Date(data.fechaNacimiento) : null,
+          telefono: data.telefono ?? null,
+          rol: (data.rol ?? 'COLABORADOR') as Rol,
+          passwordHash,
+          estado: (data.estado ?? 'ACTIVO') as Estado,
+          passwordUpdatedAt: new Date(),
+          tempPasswordExpiresAt: null,
+        },
+        select: {
+          id: true,
+          nombreCompleto: true,
+          correo: true,
+          cedula: true,
+          fechaNacimiento: true,
+          telefono: true,
+          rol: true,
+          estado: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+      const user = await this.ensureUserAndRole(
+        tx,
+        correo,
+        created.nombreCompleto,
+        (data.rol ?? 'COLABORADOR') as Rol,
+        passwordHash,
+      );
+
+      return { created, user }; // user: { id, email }
+    });
+
+    // Genera token de invitación (30m) y envía correo (no rompe si falla)
+    try {
+      const secret = this.config.get<string>('PASSWORD_JWT_SECRET');
+      if (!secret) throw new BadRequestException('PASSWORD_JWT_SECRET no configurado en el servidor');
+
+      const expiresIn = this.config.get<string | number>('PASSWORD_JWT_EXPIRES') ?? '30m';
+
+      const token = await this.jwt.signAsync(
+        { email: user.email, userId: user.id },
+        { secret, expiresIn, jwtid: crypto.randomUUID() },
+      );
+
+      const sendEmails = (this.config.get<string>('SEND_EMAILS') ?? 'true').toLowerCase() !== 'false';
+      if (!sendEmails) {
+        const link = this.email.buildSetPasswordLink(token);
+        return { ...created, welcomeLink: link, mode: 'DRY_RUN' as const };
+      }
+
+      await this.email.sendWelcomeSetPasswordEmail(user.email, token);
+    } catch (e: any) {
+      // eslint-disable-next-line no-console
+      console.warn('[COLLABORATOR.CREATE] email no enviado:', e?.message || e);
+    }
 
     return created;
   }
@@ -251,16 +345,19 @@ export class CollaboratorsService {
     const existing = await this.db.collaborator.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Colaborador no encontrado');
 
-    const nextCorreo = data.correo ?? existing.correo;
+    const nextCorreo = data.correo ? this.normalizeEmail(data.correo) : this.normalizeEmail(existing.correo);
     const nextCedula = data.cedula ?? existing.cedula;
-    if (nextCorreo !== existing.correo || nextCedula !== existing.cedula) {
+
+    if (
+      nextCorreo !== this.normalizeEmail(existing.correo) ||
+      nextCedula !== existing.cedula
+    ) {
       await this.ensureUnique(nextCorreo, nextCedula, id);
     }
     if (data.fechaNacimiento !== undefined) {
       this.ensureAge18(data.fechaNacimiento);
     }
 
-    // Validar “último admin activo” antes de aplicar cambios
     const nextRol = (data.rol ?? existing.rol) as Rol;
     const nextEstado = (data.estado ?? existing.estado) as Estado;
     await this.ensureNotDemoteLastAdmin(id, nextRol, nextEstado);
@@ -269,26 +366,37 @@ export class CollaboratorsService {
       ? await bcrypt.hash(data.password, BCRYPT_COST)
       : undefined;
 
-    await this.db.collaborator.update({
-      where: { id },
-      data: {
-        nombreCompleto: data.nombreCompleto,
-        correo: data.correo,
-        cedula: data.cedula,
-        fechaNacimiento:
-          data.fechaNacimiento === undefined
-            ? undefined
-            : data.fechaNacimiento
-            ? new Date(data.fechaNacimiento)
-            : null,
-        telefono: data.telefono,
-        rol: data.rol as Rol | undefined,
-        passwordHash,
-        ...(passwordHash
-          ? { passwordUpdatedAt: new Date(), tempPasswordExpiresAt: null }
-          : {}),
-        estado: data.estado as Estado | undefined,
-      },
+    await this.prisma.$transaction(async (tx) => {
+      await (tx as any).collaborator.update({
+        where: { id },
+        data: {
+          nombreCompleto: data.nombreCompleto,
+          correo: data.correo ? nextCorreo : undefined,
+          cedula: data.cedula,
+          fechaNacimiento:
+            data.fechaNacimiento === undefined
+              ? undefined
+              : data.fechaNacimiento
+              ? new Date(data.fechaNacimiento)
+              : null,
+          telefono: data.telefono,
+          rol: data.rol as Rol | undefined,
+          passwordHash,
+          ...(passwordHash
+            ? { passwordUpdatedAt: new Date(), tempPasswordExpiresAt: null }
+            : {}),
+          estado: data.estado as Estado | undefined,
+        },
+      });
+
+      // Sincroniza user (garantiza existencia y rol)
+      await this.ensureUserAndRole(
+        tx,
+        nextCorreo,
+        data.nombreCompleto ?? existing.nombreCompleto,
+        nextRol,
+        passwordHash, // si viene, actualizamos password del user
+      );
     });
   }
 
@@ -300,9 +408,9 @@ export class CollaboratorsService {
     });
     if (!existing) throw new NotFoundException('Colaborador no encontrado');
 
-    const nextEstado: Estado = existing.estado === 'ACTIVO' ? 'INACTIVO' : 'ACTIVO';
+    const nextEstado: Estado =
+      existing.estado === 'ACTIVO' ? 'INACTIVO' : 'ACTIVO';
 
-    // Si vamos a INACTIVO, proteger último admin activo
     if (nextEstado === 'INACTIVO') {
       if (await this.isLastActiveAdmin(id)) {
         throw new BadRequestException(
@@ -355,11 +463,12 @@ export class CollaboratorsService {
     await this.db.collaborator.delete({ where: { id } });
   }
 
+  /** Password temporal manual (soporte) */
   async issueTemporaryPassword(id: number): Promise<void> {
     const user = await this.db.collaborator.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('Colaborador no encontrado');
 
-    const tempPwd = generateStrongPassword(12); // No exponer
+    const tempPwd = generateStrongPassword(12);
     const passwordHash = await bcrypt.hash(tempPwd, BCRYPT_COST);
 
     const expires = new Date();

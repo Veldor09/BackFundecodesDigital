@@ -1,5 +1,14 @@
 // src/auth/auth.controller.ts
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiTags,
   ApiBody,
@@ -28,6 +37,7 @@ export class AuthController {
 
   // --- LOGIN ---
   @Post('login')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Login con email y password' })
   @ApiBody({ type: LoginDto })
   @ApiOkResponse({ description: 'Devuelve JWT y datos de usuario' })
@@ -35,19 +45,25 @@ export class AuthController {
     description: 'Credenciales inválidas o cuenta no aprobada',
   })
   async login(@Body() body: LoginDto) {
-    const user = await this.authService.validateUser(body.email, body.password);
+    // Normaliza el email por si el front no lo hizo
+    const email = (body.email || '').trim().toLowerCase();
+    const user = await this.authService.validateUser(email, body.password);
     return this.authService.login(user);
   }
 
   // --- SET PASSWORD (token de invitación, 30 min) ---
   @Post('set-password')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Establecer contraseña con token temporal (invitación)',
     description:
       'El usuario debe ingresar la contraseña 2 veces y coincidir. El token caduca según PASSWORD_JWT_EXPIRES (por defecto 30m).',
   })
   @ApiBody({ type: SetPasswordDto })
-  @ApiOkResponse({ description: 'Contraseña establecida', schema: { example: { ok: true } } })
+  @ApiOkResponse({
+    description: 'Contraseña establecida',
+    schema: { example: { ok: true } },
+  })
   @ApiBadRequestResponse({
     description: 'Token inválido/expirado o contraseñas no coinciden',
   })
@@ -56,12 +72,13 @@ export class AuthController {
       dto.token,
       dto.newPassword,
       dto.confirmPassword,
-      req.ip || (req.headers['x-forwarded-for'] as string) || null,
+      (req.ip as string) || (req.headers['x-forwarded-for'] as string) || null,
     );
   }
 
   // --- FORGOT PASSWORD (solicitar enlace de recuperación) ---
   @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Solicita un enlace de recuperación de contraseña',
     description:
@@ -75,12 +92,14 @@ export class AuthController {
     },
   })
   @ApiOkResponse({ schema: { example: { ok: true } } })
-  async forgotPassword(@Body('email') email: string) {
+  async forgotPassword(@Body('email') emailRaw: string) {
+    const email = (emailRaw || '').trim().toLowerCase();
     return this.authService.requestPasswordReset(email);
   }
 
   // --- RESET PASSWORD (cambiar con token de recuperación) ---
   @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Cambia la contraseña usando el token de recuperación',
     description:
@@ -111,7 +130,7 @@ export class AuthController {
       token,
       newPassword,
       confirmPassword,
-      req.ip || (req.headers['x-forwarded-for'] as string) || null,
+      (req.ip as string) || (req.headers['x-forwarded-for'] as string) || null,
     );
   }
 
@@ -133,6 +152,7 @@ export class AuthController {
 
   // --- VERIFY manual (depuración de tokens) ---
   @Post('_verify')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Verifica un token manualmente y muestra payload/error' })
   @ApiBody({
     schema: {
