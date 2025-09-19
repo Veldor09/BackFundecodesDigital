@@ -13,10 +13,10 @@ import { JwtStrategy } from './jwt.strategy';
 
 @Module({
   imports: [
-    // Disponibiliza variables de entorno a este módulo
+    // Variables de entorno
     ConfigModule,
 
-    // DB y servicios comunes
+    // DB y servicios comunes (EmailService, etc.)
     PrismaModule,
     CommonModule,
 
@@ -43,7 +43,7 @@ import { JwtStrategy } from './jwt.strategy';
   ],
   exports: [
     AuthService,
-    JwtModule,       // para inyectar JwtService en otros módulos (p.ej. UsersService)
+    JwtModule,       // para inyectar JwtService en otros módulos (p.ej. CollaboratorsService/UsersService)
     PassportModule,  // para usar AuthGuard('jwt') fuera
   ],
 })
