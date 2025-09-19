@@ -5,18 +5,23 @@ import {
   IsString,
   Length,
   Matches,
+  MaxLength,
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { CollaboratorRol } from './collaborator-rol.enum';
 import { CollaboratorEstado } from './collaborator-estado.enum';
 
-// Formato cédula CR: 1-1111-1111 o 01-1234-5678
-const CEDULA_REGEX = /^[0-9]{1,2}-[0-9]{3,4}-[0-9]{3,4}$/;
+// Igual que en Create
+const CEDULA_REGEX =
+  /^(?:\d{1,2}-\d{3,4}-\d{3,4}|[A-Za-z0-9-]{5,25})$/;
+const PHONE_E164_REGEX = /^\+\d{6,20}$/;
 
 export class UpdateCollaboratorDto {
   @ApiPropertyOptional({
     example: 'Juan Pérez',
     description: 'Nombre completo del colaborador',
+    minLength: 3,
+    maxLength: 150,
   })
   @IsOptional()
   @IsString()
@@ -28,25 +33,27 @@ export class UpdateCollaboratorDto {
   @ApiPropertyOptional({
     example: 'juan.perez@fundecodes.org',
     description: 'Correo electrónico único',
+    maxLength: 160,
   })
   @IsOptional()
   @IsEmail({}, { message: 'El correo no tiene un formato válido' })
-  @Length(5, 160, { message: 'El correo debe tener entre 5 y 160 caracteres' })
+  @MaxLength(160, { message: 'El correo no puede exceder 160 caracteres' })
   correo?: string;
 
   @ApiPropertyOptional({
-    example: '1-5678-1234',
-    description: 'Cédula del colaborador',
+    example: '01-1234-5678',
+    description:
+      'Cédula (CR típico o genérico alfanumérico con guiones, 5–25 chars)',
   })
   @IsOptional()
   @IsString()
-  @Length(5, 25, { message: 'La cédula debe tener entre 5 y 25 caracteres' })
   @Matches(CEDULA_REGEX, { message: 'La cédula no cumple el formato esperado' })
+  @Length(5, 25, { message: 'La cédula debe tener entre 5 y 25 caracteres' })
   cedula?: string;
 
   @ApiPropertyOptional({
     example: '1995-12-15',
-    description: 'Fecha de nacimiento en formato ISO (YYYY-MM-DD)',
+    description: 'Fecha de nacimiento (ISO YYYY-MM-DD)',
   })
   @IsOptional()
   @IsString({
@@ -55,12 +62,14 @@ export class UpdateCollaboratorDto {
   fechaNacimiento?: string | null;
 
   @ApiPropertyOptional({
-    example: '88889999',
-    description: 'Número de teléfono',
+    example: '+50688889999',
+    description: 'Número de teléfono en formato E.164 (+ y 6–20 dígitos)',
   })
   @IsOptional()
   @IsString()
-  @Length(5, 25, { message: 'El teléfono debe tener entre 5 y 25 caracteres' })
+  @Matches(PHONE_E164_REGEX, {
+    message: 'El teléfono debe estar en formato + y 6–20 dígitos (E.164)',
+  })
   telefono?: string | null;
 
   @ApiPropertyOptional({
@@ -74,8 +83,9 @@ export class UpdateCollaboratorDto {
 
   @ApiPropertyOptional({
     example: 'NuevoPass123!',
-    description:
-      'Contraseña en texto plano (se volverá a hashear si se actualiza)',
+    description: 'Contraseña en texto plano (se volverá a hashear si se actualiza)',
+    minLength: 8,
+    maxLength: 100,
   })
   @IsOptional()
   @IsString()

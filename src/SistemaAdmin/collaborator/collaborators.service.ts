@@ -1,3 +1,4 @@
+// src/collaborators/collaborators.service.ts
 import {
   Injectable,
   ConflictException,
@@ -36,11 +37,12 @@ export class CollaboratorsService {
     private readonly welcome: WelcomeFlowService,
   ) {}
 
-  // acceso flexible mientras los tipos de Prisma se regeneran
+  // Acceso flexible mientras los tipos de Prisma se regeneran
   private get db(): any {
     return this.prisma as any;
   }
 
+  // ----------------- Validaciones básicas -----------------
   private ensureAge18(fechaISO?: string | null) {
     if (!fechaISO) return;
     const d = new Date(fechaISO);
@@ -80,9 +82,7 @@ export class CollaboratorsService {
     }
   }
 
-  // ========== NUEVO: Protección "último admin activo" ==========
-
-  /** ¿Este usuario es el último administrador ACTIVO del sistema? */
+  // ========== Protección "último admin activo" ==========
   private async isLastActiveAdmin(userId: number): Promise<boolean> {
     const totalAdminsActivos: number = await this.db.collaborator.count({
       where: { rol: 'ADMIN', estado: 'ACTIVO' },
@@ -98,10 +98,6 @@ export class CollaboratorsService {
     return false;
   }
 
-  /**
-   * Lanza 400 si el cambio dejaría al sistema sin administradores activos.
-   * Se usa dentro de update() y deactivate().
-   */
   private async ensureNotDemoteLastAdmin(
     id: number,
     nextRol: Rol,
@@ -118,10 +114,7 @@ export class CollaboratorsService {
     }
   }
 
-  /**
-   * Método PÚBLICO para que el controller exponga un endpoint
-   * de verificación previa (no lanza excepción, devuelve {safe,reason}).
-   */
+  /** Endpoint de verificación previa (no lanza excepción) */
   async checkAdminChangeSafety(
     id: number,
     nextRol: Rol,
@@ -135,8 +128,7 @@ export class CollaboratorsService {
     }
   }
 
-  // =============================================================
-
+  // ----------------- CRUD -----------------
   async create(data: CreateData) {
     await this.ensureUnique(data.correo, data.cedula);
     this.ensureAge18(data.fechaNacimiento);
@@ -172,7 +164,7 @@ export class CollaboratorsService {
       },
     });
 
-    // correo de bienvenida con link set-password (no bloquea la respuesta)
+    // Correo de bienvenida con link set-password (no bloquea la respuesta)
     void this.welcome
       .onCollaboratorCreated({
         id: created.id,
@@ -192,7 +184,6 @@ export class CollaboratorsService {
     pageSize: number;
   }) {
     const { q, rol, estado, page, pageSize } = params;
-
     const where: any = {};
     if (q && q.trim()) {
       where.OR = [
@@ -269,7 +260,7 @@ export class CollaboratorsService {
       this.ensureAge18(data.fechaNacimiento);
     }
 
-    // 👇 validar “último admin activo” antes de aplicar cambios
+    // Validar “último admin activo” antes de aplicar cambios
     const nextRol = (data.rol ?? existing.rol) as Rol;
     const nextEstado = (data.estado ?? existing.estado) as Estado;
     await this.ensureNotDemoteLastAdmin(id, nextRol, nextEstado);
@@ -301,12 +292,50 @@ export class CollaboratorsService {
     });
   }
 
+  // -------- TOGGLE STATUS (ACTIVO/INACTIVO) --------
+  async toggleStatus(id: number) {
+    const existing = await this.db.collaborator.findUnique({
+      where: { id },
+      select: { id: true, estado: true, rol: true },
+    });
+    if (!existing) throw new NotFoundException('Colaborador no encontrado');
+
+    const nextEstado: Estado = existing.estado === 'ACTIVO' ? 'INACTIVO' : 'ACTIVO';
+
+    // Si vamos a INACTIVO, proteger último admin activo
+    if (nextEstado === 'INACTIVO') {
+      if (await this.isLastActiveAdmin(id)) {
+        throw new BadRequestException(
+          'No puedes desactivar al único administrador ACTIVO restante.',
+        );
+      }
+    }
+
+    const updated = await this.db.collaborator.update({
+      where: { id },
+      data: { estado: nextEstado },
+      select: {
+        id: true,
+        nombreCompleto: true,
+        correo: true,
+        cedula: true,
+        fechaNacimiento: true,
+        telefono: true,
+        rol: true,
+        estado: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return updated;
+  }
+
   async deactivate(id: number): Promise<void> {
     const existing = await this.db.collaborator.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Colaborador no encontrado');
     if (existing.estado === 'INACTIVO') return; // idempotente
 
-    // 👇 bloquear si es el último admin activo
     if (await this.isLastActiveAdmin(id)) {
       throw new BadRequestException(
         'No puedes desactivar al único administrador ACTIVO restante.',
@@ -319,20 +348,18 @@ export class CollaboratorsService {
     });
   }
 
-  async remove(id: number) {
-    try {
-      await this.db.collaborator.delete({ where: { id } });
-      return { ok: true };
-    } catch {
-      throw new NotFoundException('Colaborador no encontrado');
-    }
+  // DELETE (para 204 No Content)
+  async remove(id: number): Promise<void> {
+    const existing = await this.db.collaborator.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('Colaborador no encontrado');
+    await this.db.collaborator.delete({ where: { id } });
   }
 
   async issueTemporaryPassword(id: number): Promise<void> {
     const user = await this.db.collaborator.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('Colaborador no encontrado');
 
-    const tempPwd = generateStrongPassword(12); // NO exponer por respuesta
+    const tempPwd = generateStrongPassword(12); // No exponer
     const passwordHash = await bcrypt.hash(tempPwd, BCRYPT_COST);
 
     const expires = new Date();

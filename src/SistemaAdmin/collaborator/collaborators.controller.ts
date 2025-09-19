@@ -1,13 +1,15 @@
+// src/collaborators/collaborators.controller.ts
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
   Param,
   ParseIntPipe,
   Patch,
   Post,
   Query,
-  HttpCode,
 } from '@nestjs/common';
 import { CollaboratorsService } from './collaborators.service';
 import { CreateCollaboratorDto } from './dto/create-collaborator.dto';
@@ -20,6 +22,7 @@ import { CollaboratorEstado } from './dto/collaborator-estado.enum';
 export class CollaboratorsController {
   constructor(private readonly service: CollaboratorsService) {}
 
+  // ---------- CREATE ----------
   @Post()
   async create(@Body() dto: CreateCollaboratorDto) {
     const created = await this.service.create({
@@ -35,6 +38,7 @@ export class CollaboratorsController {
     return created;
   }
 
+  // ---------- LIST ----------
   @Get()
   list(@Query() q: ListCollaboratorsQuery) {
     return this.service.list({
@@ -46,18 +50,15 @@ export class CollaboratorsController {
     });
   }
 
+  // ---------- GET ----------
   @Get(':id')
   get(@Param('id', ParseIntPipe) id: number) {
     return this.service.findById(id);
   }
 
   /**
-   * Endpoint auxiliar de verificación previa:
-   * Devuelve { safe: boolean, reason?: string } indicando si es seguro
-   * aplicar un cambio de rol/estado sin dejar al sistema sin admins activos.
-   *
-   * Uso típico desde el front:
-   *   GET /collaborators/123/safety?nextRol=COLABORADOR&nextEstado=ACTIVO
+   * Verificación de seguridad antes de aplicar cambios de rol/estado.
+   * GET /collaborators/:id/safety?nextRol=COLABORADOR&nextEstado=ACTIVO
    */
   @Get(':id/safety')
   async checkSafety(
@@ -65,7 +66,6 @@ export class CollaboratorsController {
     @Query('nextRol') nextRol?: CollaboratorRol,
     @Query('nextEstado') nextEstado?: CollaboratorEstado,
   ) {
-    // Si no pasan valores, usamos los actuales para no romper:
     const current = await this.service.findById(id);
     const rol = (nextRol as CollaboratorRol) ?? (current.rol as CollaboratorRol);
     const estado =
@@ -75,6 +75,7 @@ export class CollaboratorsController {
     return this.service.checkAdminChangeSafety(id, rol, estado);
   }
 
+  // ---------- UPDATE ----------
   @Patch(':id')
   @HttpCode(204)
   async update(
@@ -91,20 +92,39 @@ export class CollaboratorsController {
       password: dto.password,
       estado: dto.estado,
     });
-    return; // 204 sin body
+    return; // 204
   }
 
+  // ---------- TOGGLE STATUS (ACTIVO/INACTIVO) ----------
+  // Necesario para el botón del front: PATCH /collaborators/:id/toggle-status
+  @Patch(':id/toggle-status')
+  async toggleStatus(@Param('id', ParseIntPipe) id: number) {
+    // Devuelve el colaborador actualizado (200 OK)
+    return this.service.toggleStatus(id);
+  }
+
+  // ---------- DEACTIVATE (si lo sigues usando) ----------
   @Patch(':id/deactivate')
   @HttpCode(204)
   async deactivate(@Param('id', ParseIntPipe) id: number) {
     await this.service.deactivate(id);
-    return; // 204 sin body
+    return; // 204
   }
 
+  // ---------- ISSUE TEMP PASSWORD ----------
   @Patch(':id/issue-temp-password')
   @HttpCode(204)
   async issueTempPassword(@Param('id', ParseIntPipe) id: number) {
     await this.service.issueTemporaryPassword(id);
-    return; // 204 sin body
+    return; // 204
+  }
+
+  // ---------- DELETE ----------
+  // Necesario para el botón del front: DELETE /collaborators/:id
+  @Delete(':id')
+  @HttpCode(204)
+  async remove(@Param('id', ParseIntPipe) id: number) {
+    await this.service.remove(id);
+    return; // 204
   }
 }
