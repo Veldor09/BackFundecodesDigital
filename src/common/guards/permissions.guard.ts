@@ -2,13 +2,15 @@
 import {
   CanActivate,
   ExecutionContext,
-  ForbiddenException,
   Injectable,
+  UnauthorizedException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
 
-// Mismo mapa que en AuthService (mantener centralizado si quieres)
+// Si defines un mapa de permisos por rol, puedes mantenerlo aquí
+// o centralizarlo en un servicio de Auth y reusarlo.
 type RoleName = 'admin' | 'editor' | 'viewer' | string;
 
 const ROLE_PERMS: Record<RoleName, string[]> = {
@@ -17,54 +19,74 @@ const ROLE_PERMS: Record<RoleName, string[]> = {
   viewer: [],
 };
 
-function aggregatePerms(roles: string[] = []): string[] {
+function aggregatePermsFromRoles(roles: string[] = []): string[] {
   const set = new Set<string>();
   for (const r of roles) {
     const perms = ROLE_PERMS[r] ?? [];
-    perms.forEach((p) => set.add(p));
+    for (const p of perms) set.add(p);
   }
   return Array.from(set);
 }
 
-// Lo que esperamos que venga en req.user desde el JWT
 interface JwtUser {
-  sub: number;
-  email: string;
+  id?: number;        // lo populamos en JwtStrategy.validate
+  sub?: number;       // por si llega sin mapear
+  email?: string;
   roles?: string[];
-  perms?: string[];
+  perms?: string[];        // nombre común que venimos usando
+  permissions?: string[];  // alias alterno por compatibilidad
 }
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
-  constructor(private reflector: Reflector) {}
+  constructor(private readonly reflector: Reflector) {}
 
   canActivate(ctx: ExecutionContext): boolean {
-    // Permisos requeridos por el handler/clase (@Permissions)
+    // Permisos requeridos por la ruta/controlador (@Permissions(...))
     const required =
       this.reflector.getAllAndOverride<string[]>(PERMISSIONS_KEY, [
         ctx.getHandler(),
         ctx.getClass(),
       ]) ?? [];
 
-    // Si no se pidió ningún permiso, deja pasar
-    if (!required.length) return true;
+    // Si la ruta no exige permisos explícitos, permitir
+    if (required.length === 0) return true;
 
     const req = ctx.switchToHttp().getRequest();
-    const user = (req?.user || {}) as JwtUser;
+    const user: JwtUser | undefined = req?.user;
 
-    if (!user?.sub) {
-      // No debería ocurrir si JwtAuthGuard corre antes
-      throw new ForbiddenException('No autenticado');
+    // Si JwtAuthGuard no colocó user, devolvemos 401 (no 403)
+    if (!user) {
+      throw new UnauthorizedException('No autenticado');
     }
 
-    // 1) Usa perms que vienen en el JWT si existen
-    // 2) Si no, derrívalos a partir de los roles del JWT
-    const permsFromToken = Array.isArray(user.perms) ? user.perms : [];
-    const derived = aggregatePerms(user.roles ?? []);
-    const perms = new Set<string>([...permsFromToken, ...derived]);
+    // Normalizamos identidad
+    const userId = user.id ?? user.sub;
+    if (!userId) {
+      // Hay user pero sin id/sub -> también es 401
+      throw new UnauthorizedException('No autenticado');
+    }
 
-    const ok = required.every((p) => perms.has(p));
-    if (!ok) {
+    // Normalizamos roles/permisos
+    const roles = Array.isArray(user.roles) ? user.roles : [];
+
+    // Bypass: rol admin siempre puede
+    if (roles.includes('admin')) return true;
+
+    const explicitPerms = Array.isArray(user.perms)
+      ? user.perms
+      : Array.isArray(user.permissions)
+      ? user.permissions
+      : [];
+
+    // Si no vienen permisos explícitos en el token, derivamos por roles
+    const derivedPerms = aggregatePermsFromRoles(roles);
+
+    // Unimos ambos conjuntos
+    const effective = new Set<string>([...explicitPerms, ...derivedPerms]);
+
+    const hasAll = required.every((p) => effective.has(p));
+    if (!hasAll) {
       throw new ForbiddenException('No tienes permisos para esta acción');
     }
 

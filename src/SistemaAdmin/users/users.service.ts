@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -9,20 +10,32 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { QueryUserDto } from './dto/query-user.dto';
 import { AssignRolesDto } from './dto/assign-roles.dto';
 import * as bcrypt from 'bcrypt';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
+import * as crypto from 'crypto';
+import { EmailService } from '../../common/services/email.service';
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly config: ConfigService,
+    private readonly jwt: JwtService,
+    private readonly email: EmailService,
+  ) {}
 
+  // ---------- CREATE (envía correo de bienvenida con token 30m) ----------
   async create(dto: CreateUserDto) {
     const exists = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
     if (exists) throw new BadRequestException('El correo ya está en uso');
+    if (!dto.password)
+      throw new BadRequestException('La contraseña es obligatoria');
 
     const password = await bcrypt.hash(dto.password, 10);
     const verified = dto.verified ?? false;
-    // ⚠️ No usamos approved aquí para evitar error de tipos si el cliente no está actualizado
+
     const user = await this.prisma.user.create({
       data: { email: dto.email, name: dto.name, password, verified },
     });
@@ -40,15 +53,148 @@ export class UsersService {
       }
     }
 
-    // Si quisieras setear approved en el momento de creación,
-    // hazlo con una segunda operación:
-    // if ((dto as any).approved !== undefined) {
-    //   await this.prisma.user.update({ where: { id: user.id }, data: { approved: (dto as any).approved } as any });
-    // }
+    // Enviar bienvenida (no rompe el create si falla)
+    try {
+      const secret = this.config.get<string>('PASSWORD_JWT_SECRET');
+      if (!secret) {
+        throw new BadRequestException(
+          'PASSWORD_JWT_SECRET no configurado en el servidor',
+        );
+      }
+      const expiresIn =
+        this.config.get<string | number>('PASSWORD_JWT_EXPIRES') ?? '30m';
+
+      const token = await this.jwt.signAsync(
+        { email: user.email, userId: user.id },
+        { secret, expiresIn, jwtid: crypto.randomUUID() },
+      );
+
+      const sendEmailsEnv = (
+        this.config.get<string>('SEND_EMAILS') ?? 'true'
+      ).toLowerCase();
+      const sendEmails = sendEmailsEnv !== 'false';
+
+      if (!sendEmails) {
+        const link = this.email.buildSetPasswordLink(token);
+        // eslint-disable-next-line no-console
+        console.log('[CREATE-DRY-RUN] SEND_EMAILS=false ->', link);
+        return { ...(await this.findOne(user.id)), welcomeLink: link, mode: 'DRY_RUN' };
+      }
+
+      await this.email.sendWelcomeSetPasswordEmail(user.email, token);
+    } catch (e: any) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[CREATE] Aviso: no se pudo enviar el email de bienvenida:',
+        e?.message || e,
+      );
+    }
 
     return this.findOne(user.id);
   }
 
+  // ---------- INVITAR (crea si no existe, asigna roles, genera token 30m, envía correo) ----------
+  async inviteUser({
+    email,
+    name,
+    roles,
+  }: {
+    email: string;
+    name?: string;
+    roles?: string[];
+  }) {
+    // eslint-disable-next-line no-console
+    console.log('[INVITE-DEBUG] dto=', { email, name, roles });
+    if (!email) throw new BadRequestException('email es requerido');
+
+    try {
+      // 1) Usuario
+      let user = await this.prisma.user.findUnique({ where: { email } });
+      // eslint-disable-next-line no-console
+      console.log('[INVITE-DEBUG] user.exists?', !!user);
+
+      if (!user) {
+        const tempPlain = crypto.randomBytes(16).toString('hex');
+        const tempHash = await bcrypt.hash(tempPlain, 10);
+
+        user = await this.prisma.user.create({
+          data: {
+            email,
+            name: name ?? email.split('@')[0],
+            verified: false,
+            password: tempHash,
+          },
+        });
+        // eslint-disable-next-line no-console
+        console.log('[INVITE-DEBUG] user.created', user.id);
+      }
+
+      // 2) Roles
+      if (roles?.length) {
+        for (const r of roles) {
+          const role = await this.prisma.role.upsert({
+            where: { name: r },
+            create: { name: r },
+            update: {},
+          });
+          const existsRel = await this.prisma.userRole.findFirst({
+            where: { userId: user.id, roleId: role.id },
+          });
+          if (!existsRel) {
+            await this.prisma.userRole.create({
+              data: { userId: user.id, roleId: role.id },
+            });
+          }
+        }
+      }
+
+      // 3) Token
+      const secret = this.config.get<string>('PASSWORD_JWT_SECRET');
+      if (!secret) {
+        throw new BadRequestException(
+          'PASSWORD_JWT_SECRET no configurado en el servidor',
+        );
+      }
+      const expiresIn =
+        this.config.get<string | number>('PASSWORD_JWT_EXPIRES') ?? '30m';
+
+      const token = await this.jwt.signAsync(
+        { email: user.email, userId: user.id },
+        { secret, expiresIn, jwtid: crypto.randomUUID() },
+      );
+      // eslint-disable-next-line no-console
+      console.log('[INVITE-DEBUG] token.created');
+
+      // 4) Modo dry-run
+      const sendEmailsEnv = (
+        this.config.get<string>('SEND_EMAILS') ?? 'true'
+      ).toLowerCase();
+      const sendEmails = sendEmailsEnv !== 'false';
+
+      if (!sendEmails) {
+        const link = this.email.buildSetPasswordLink(token);
+        // eslint-disable-next-line no-console
+        console.log('[INVITE-DEBUG] SEND_EMAILS=false, link=', link);
+        return { ok: true, userId: user.id, link, mode: 'DRY_RUN' };
+      }
+
+      // 5) Envío real
+      await this.email.sendWelcomeSetPasswordEmail(user.email, token);
+      // eslint-disable-next-line no-console
+      console.log('[INVITE-DEBUG] email.sent');
+
+      return { ok: true, userId: user.id };
+    } catch (e: any) {
+      // eslint-disable-next-line no-console
+      console.error('[INVITE-ERROR]', e?.response?.body ?? e?.message ?? e);
+      if (e?.status && e?.status < 500) throw e;
+      throw new InternalServerErrorException(
+        e?.message || 'Error interno en invitación',
+      );
+    }
+  }
+
+  // ---------- LIST ----------
   async findAll(q: QueryUserDto) {
     const { page = 1, limit = 10, search, verified, role } = q;
 
@@ -76,6 +222,7 @@ export class UsersService {
     return { total, page, limit, items };
   }
 
+  // ---------- GET ----------
   async findOne(id: number) {
     const user = await this.prisma.user.findUnique({
       where: { id },
@@ -85,8 +232,8 @@ export class UsersService {
     return user;
   }
 
+  // ---------- UPDATE ----------
   async update(id: number, dto: UpdateUserDto) {
-    // Construye datos seguros: evita approved aquí para no chocar con tipos viejos
     const data: any = {};
     if (dto.email !== undefined) data.email = dto.email;
     if (dto.name !== undefined) data.name = dto.name;
@@ -95,14 +242,8 @@ export class UsersService {
 
     await this.prisma.user.update({ where: { id }, data });
 
-    // Si quieren actualizar roles desde este endpoint:
     if (dto.roles) {
-      const current = await this.prisma.userRole.findMany({
-        where: { userId: id },
-      });
-      if (current.length) {
-        await this.prisma.userRole.deleteMany({ where: { userId: id } });
-      }
+      await this.prisma.userRole.deleteMany({ where: { userId: id } });
       for (const r of dto.roles) {
         const role = await this.prisma.role.upsert({
           where: { name: r },
@@ -115,31 +256,28 @@ export class UsersService {
       }
     }
 
-    // Si necesitas cambiar approved desde aquí:
-    // if ((dto as any).approved !== undefined) {
-    //   await this.prisma.user.update({ where: { id }, data: { approved: (dto as any).approved } as any });
-    // }
-
     return this.findOne(id);
   }
 
+  // ---------- DELETE ----------
   async remove(id: number) {
     await this.prisma.user.delete({ where: { id } });
     return { message: 'Usuario eliminado' };
   }
 
+  // ---------- VERIFY / APPROVE ----------
   async verifyUser(id: number, verified: boolean) {
     await this.prisma.user.update({ where: { id }, data: { verified } });
     return this.findOne(id);
   }
 
-  // ✅ método explícito para approved (lo usa el front y evita el problema en UpdateInput)
-  async approveUser(id: number, approved: boolean) {
-    // @ts-ignore (se puede quitar tras regenerar el cliente)
-    await this.prisma.user.update({ where: { id }, data: { approved } as any });
+  // ✅ Ahora siempre deja approved=true (sin body)
+  async approveUser(id: number) {
+    await this.prisma.user.update({ where: { id }, data: { approved: true } });
     return this.findOne(id);
   }
 
+  // ---------- ROLES ----------
   async addRole(id: number, roleName: string) {
     const role = await this.prisma.role.upsert({
       where: { name: roleName },
@@ -158,20 +296,12 @@ export class UsersService {
   }
 
   async removeRole(id: number, roleName: string) {
-    const role = await this.prisma.role.findUnique({
-      where: { name: roleName },
-    });
+    const role = await this.prisma.role.findUnique({ where: { name: roleName } });
     if (!role) return this.findOne(id);
-    const rel = await this.prisma.userRole.findFirst({
-      where: { userId: id, roleId: role.id },
-    });
-    if (rel) await this.prisma.userRole.delete({ where: { id: rel.id } });
+    await this.prisma.userRole.deleteMany({ where: { userId: id, roleId: role.id } });
     return this.findOne(id);
   }
 
-  // ==========================
-  // Métodos por IDs (batch)
-  // ==========================
   async getUserRoles(userId: number) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -191,33 +321,19 @@ export class UsersService {
     });
 
     if (roles.length !== dto.roleIds.length) {
-      const found = new Set(roles.map((r) => r.id));
-      const missing = dto.roleIds.filter((id) => !found.has(id));
-      throw new BadRequestException(
-        `Roles inexistentes: ${missing.join(', ')}`,
-      );
+      throw new BadRequestException('Algún rol no existe');
     }
 
     await this.prisma.userRole.createMany({
       data: roles.map((r) => ({ userId, roleId: r.id })),
-      skipDuplicates: true, // requiere @@unique([userId, roleId]) en Prisma
+      skipDuplicates: true,
     });
 
     return this.getUserRoles(userId);
   }
 
   async removeRoleById(userId: number, roleId: number) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new NotFoundException('Usuario no encontrado');
-
-    const res = await this.prisma.userRole.deleteMany({
-      where: { userId, roleId },
-    });
-
-    if (res.count === 0) {
-      throw new NotFoundException('El usuario no tiene asignado ese rol');
-    }
-
+    await this.prisma.userRole.deleteMany({ where: { userId, roleId } });
     return this.getUserRoles(userId);
   }
 }
