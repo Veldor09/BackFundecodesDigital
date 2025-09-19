@@ -13,11 +13,12 @@ import { FilesModule } from './SistemaAdmin/files/files.module';
 import { UsersModule } from './SistemaAdmin/users/users.module';
 import { RolesModule } from './SistemaAdmin/roles/roles.module';
 import { CollaboratorsModule } from './SistemaAdmin/collaborator/collaborators.module';
+import { VolunteerModule } from './SistemaAdmin/Volunteer/volunteer.module';
 
 // Público
 import { NewsModule } from './news/news.module';
 import { ContactModule } from './PaginaInfo/contact/contact.module';
-import { VolunteersModule } from './PaginaInfo/volunteers/volunteers.module';
+import { VolunteersFormModule } from './PaginaInfo/volunteers/volunteer-form.module';
 import { InformationalPageModule } from './PaginaInfo/informational-page.module';
 
 // Auth
@@ -26,46 +27,46 @@ import { AuthModule } from './auth/auth.module';
 // Comunes
 import { CommonModule } from './common/common.module';
 
-const isDev = (process.env.NODE_ENV || 'development') !== 'production';
-
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       validationSchema: Joi.object({
-        NODE_ENV: Joi.string()
-          .valid('development', 'production', 'test')
-          .default('development'),
+        // --- APP ---
+        NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
         PORT: Joi.number().default(4000),
 
-        // DB
+        // --- DB ---
         DATABASE_URL: Joi.string().uri().required(),
 
-        // Front para el link de set-password
+        // --- FRONT (links de set-password) ---
         FRONTEND_URL: Joi.string().uri().required(),
         FRONTEND_SET_PASSWORD_PATH: Joi.string().default('/set-password'),
 
-        // SendGrid (opcional en dev, requerido en prod)
-        SENDGRID_API_KEY: isDev
-          ? Joi.string().min(10).optional()
-          : Joi.string().min(10).required(),
-        MAIL_FROM: Joi.string().default('Fundecodes <no-reply@fundecodes.org>'),
-
-        // Token de set-password (30m por defecto)
+        // --- JWTs ---
         PASSWORD_JWT_SECRET: Joi.string().min(16).required(),
-        PASSWORD_JWT_EXPIRES: Joi.alternatives(
-          Joi.number(),
-          Joi.string(), // '30m', '1h', etc.
-        ).default('30m'),
+        PASSWORD_JWT_EXPIRES: Joi.alternatives().try(Joi.number(), Joi.string()).default('30m'),
+        JWT_SECRET: Joi.string().default('dev-secret'),
 
-        // CORS / Proxy
+        // --- Email (MailerSend SMTP) ---
+        MAIL_HOST: Joi.string().default('smtp.mailersend.net'),
+        MAIL_PORT: Joi.number().default(587),           // usa 2525 si tu red bloquea 587
+        MAIL_USERNAME: Joi.string().allow('').default(''),
+        MAIL_PASSWORD: Joi.string().allow('').default(''),
+        MAIL_FROM: Joi.string().default('Fundecodes <no-reply@test.mlsender.net>'),
+        SEND_EMAILS: Joi.string().valid('true', 'false').default('true'),
+
+        // --- (Legacy) SENDGRID opcional: ya no se usa, pero no bloquea el arranque ---
+        SENDGRID_API_KEY: Joi.string().optional(),
+
+        // --- Otros ---
         TRUST_PROXY: Joi.string().valid('0', '1').default('0'),
       }),
     }),
 
     CacheModule.register({
       isGlobal: true,
-      ttl: 60_000, // 1 minuto (ms)
+      ttl: 60_000,
       max: 500,
     }),
 
@@ -78,11 +79,12 @@ const isDev = (process.env.NODE_ENV || 'development') !== 'production';
     UsersModule,
     RolesModule,
     CollaboratorsModule,
+    VolunteerModule,
 
     // Público
     NewsModule,
     ContactModule,
-    VolunteersModule,
+    VolunteersFormModule,
     InformationalPageModule,
 
     // Auth

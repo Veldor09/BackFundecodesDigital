@@ -1,21 +1,18 @@
-// src/auth/dto/set-password.dto.ts
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, Length } from 'class-validator';
+import { IsString, MinLength } from 'class-validator';
 
 export class SetPasswordDto {
-  @ApiProperty({
-    description: 'Token JWT enviado por correo (vigencia 30 minutos)',
-    example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-  })
+  @ApiProperty({ description: 'Token JWT recibido por email (30 min de vigencia)' })
   @IsString()
-  token!: string;
+  token: string;
 
-  @ApiProperty({
-    description: 'Nueva contraseña definitiva',
-    minLength: 8,
-    example: 'Nuev4Cl@ve2024!',
-  })
+  @ApiProperty({ description: 'Nueva contraseña', minLength: 8 })
   @IsString()
-  @Length(8, 100)
-  newPassword!: string;
+  @MinLength(8)
+  newPassword: string;
+
+  @ApiProperty({ description: 'Confirmación de la nueva contraseña', minLength: 8 })
+  @IsString()
+  @MinLength(8)
+  confirmPassword: string;
 }

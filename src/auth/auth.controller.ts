@@ -1,5 +1,5 @@
 // src/auth/auth.controller.ts
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
 import {
   ApiTags,
   ApiBody,
@@ -7,52 +7,30 @@ import {
   ApiUnauthorizedResponse,
   ApiBadRequestResponse,
   ApiOperation,
+  ApiBearerAuth,
 } from '@nestjs/swagger';
+import { Request } from 'express';
+import * as jwt from 'jsonwebtoken';
+
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
-import { SetPasswordDto } from './dto/set-password.dto';
+import { SetPasswordDto } from './dto/set-password.dto'; // { token, newPassword, confirmPassword? }
+import { JwtAuthGuard } from './jwt-auth.guard';
+import { ConfigService } from '@nestjs/config';
 
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly config: ConfigService,
+  ) {}
 
   // --- LOGIN ---
   @Post('login')
   @ApiOperation({ summary: 'Login con email y password' })
   @ApiBody({ type: LoginDto })
-  @ApiOkResponse({
-    description:
-      'Devuelve el JWT si las credenciales son válidas y la cuenta está aprobada',
-    schema: {
-      properties: {
-        access_token: {
-          type: 'string',
-          example: 'eyJhbGciOiJIUzI1NiIsInR5...',
-        },
-        user: {
-          type: 'object',
-          properties: {
-            id: { type: 'number', example: 12 },
-            email: { type: 'string', example: 'user@fundecodes.org' },
-            name: { type: 'string', example: 'Usuario Demo' },
-            verified: { type: 'boolean', example: true },
-            approved: { type: 'boolean', example: true },
-            roles: {
-              type: 'array',
-              items: { type: 'string' },
-              example: ['admin'],
-            },
-            perms: {
-              type: 'array',
-              items: { type: 'string' },
-              example: ['users.manage'],
-            },
-          },
-        },
-      },
-    },
-  })
+  @ApiOkResponse({ description: 'Devuelve JWT y datos de usuario' })
   @ApiUnauthorizedResponse({
     description: 'Credenciales inválidas o cuenta no aprobada',
   })
@@ -61,31 +39,119 @@ export class AuthController {
     return this.authService.login(user);
   }
 
-  // --- SET PASSWORD (con token de bienvenida, 30 min) ---
+  // --- SET PASSWORD (token de invitación, 30 min) ---
   @Post('set-password')
   @ApiOperation({
-    summary: 'Establecer contraseña definitiva con token (30 min)',
+    summary: 'Establecer contraseña con token temporal (invitación)',
     description:
-      'Recibe un token JWT enviado por correo al crear colaborador y la nueva contraseña. No devuelve datos sensibles.',
+      'El usuario debe ingresar la contraseña 2 veces y coincidir. El token caduca según PASSWORD_JWT_EXPIRES (por defecto 30m).',
+  })
+  @ApiBody({ type: SetPasswordDto })
+  @ApiOkResponse({ description: 'Contraseña establecida', schema: { example: { ok: true } } })
+  @ApiBadRequestResponse({
+    description: 'Token inválido/expirado o contraseñas no coinciden',
+  })
+  async setPassword(@Body() dto: SetPasswordDto, @Req() req: Request) {
+    return this.authService.setPasswordWithToken(
+      dto.token,
+      dto.newPassword,
+      dto.confirmPassword,
+      req.ip || (req.headers['x-forwarded-for'] as string) || null,
+    );
+  }
+
+  // --- FORGOT PASSWORD (solicitar enlace de recuperación) ---
+  @Post('forgot-password')
+  @ApiOperation({
+    summary: 'Solicita un enlace de recuperación de contraseña',
+    description:
+      'Si el correo existe, se envía un enlace temporal. La respuesta siempre es { ok: true } para evitar enumeración de usuarios.',
   })
   @ApiBody({
-    type: SetPasswordDto,
-    examples: {
-      ejemplo: {
-        summary: 'Ejemplo',
-        value: {
-          token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-          newPassword: 'Nuev4Cl@ve2024!',
-        },
-      },
+    schema: {
+      type: 'object',
+      properties: { email: { type: 'string', format: 'email' } },
+      required: ['email'],
     },
   })
-  @ApiOkResponse({
-    description: 'Contraseña establecida correctamente',
-    schema: { example: { ok: true } },
+  @ApiOkResponse({ schema: { example: { ok: true } } })
+  async forgotPassword(@Body('email') email: string) {
+    return this.authService.requestPasswordReset(email);
+  }
+
+  // --- RESET PASSWORD (cambiar con token de recuperación) ---
+  @Post('reset-password')
+  @ApiOperation({
+    summary: 'Cambia la contraseña usando el token de recuperación',
+    description:
+      'Token con expiración limitada (RESET_PASSWORD_JWT_EXPIRES). Requiere confirmar la contraseña.',
   })
-  @ApiBadRequestResponse({ description: 'Token inválido o expirado' })
-  async setPassword(@Body() dto: SetPasswordDto) {
-    return this.authService.setPasswordWithToken(dto.token, dto.newPassword);
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        token: { type: 'string' },
+        newPassword: { type: 'string', minLength: 8 },
+        confirmPassword: { type: 'string', minLength: 8 },
+      },
+      required: ['token', 'newPassword', 'confirmPassword'],
+    },
+  })
+  @ApiOkResponse({ schema: { example: { ok: true } } })
+  @ApiBadRequestResponse({
+    description: 'Token inválido/expirado o contraseñas no coinciden',
+  })
+  async resetPassword(
+    @Body('token') token: string,
+    @Body('newPassword') newPassword: string,
+    @Body('confirmPassword') confirmPassword: string,
+    @Req() req: Request,
+  ) {
+    return this.authService.resetPasswordWithToken(
+      token,
+      newPassword,
+      confirmPassword,
+      req.ip || (req.headers['x-forwarded-for'] as string) || null,
+    );
+  }
+
+  // --- ME (inspeccionar req.user) ---
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Devuelve el usuario del JWT (depuración)' })
+  me(@Req() req: Request) {
+    return { user: req.user };
+  }
+
+  // --- ECHO HEADER (depuración) ---
+  @Get('_echo')
+  @ApiOperation({ summary: 'Echo del header Authorization (depuración sin guard)' })
+  echo(@Req() req: Request) {
+    return { authorization: req.headers['authorization'] || null };
+  }
+
+  // --- VERIFY manual (depuración de tokens) ---
+  @Post('_verify')
+  @ApiOperation({ summary: 'Verifica un token manualmente y muestra payload/error' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { token: { type: 'string' } },
+      required: ['token'],
+    },
+  })
+  verify(@Body('token') token: string) {
+    const secret =
+      this.config.get<string>('JWT_SECRET') ??
+      this.config.get<string>('PASSWORD_JWT_SECRET') ??
+      'dev-secret';
+
+    try {
+      const payload = jwt.verify(token, secret);
+      return { ok: true, payload };
+    } catch (e: any) {
+      return { ok: false, name: e?.name, message: e?.message };
+    }
   }
 }
