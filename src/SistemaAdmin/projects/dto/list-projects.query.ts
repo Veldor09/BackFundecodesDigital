@@ -1,35 +1,34 @@
-import { Transform } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsString, Min } from 'class-validator';
-
-export const STATUS_VALUES = ['EN_PROCESO', 'FINALIZADO', 'PAUSADO'] as const;
-export type Status = (typeof STATUS_VALUES)[number];
+import { IsOptional, IsInt, Min, IsIn, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class ListProjectsQuery {
-  @IsOptional() @IsString() q?: string;
-  @IsOptional() @IsString() category?: string;
-
   @IsOptional()
-  @IsIn(STATUS_VALUES as readonly string[], {
-    message: `status debe ser uno de: ${STATUS_VALUES.join(', ')}`,
-  })
-  status?: Status;
-
-  @IsOptional() @IsString() place?: string;
-  @IsOptional() @IsString() area?: string;
-
-  @IsOptional()
-  @Transform(({ value }) => parseInt(value, 10))
+  @Type(() => Number)
   @IsInt()
   @Min(1)
-  page: number = 1;
+  page?: number;
 
   @IsOptional()
-  @Transform(({ value }) => parseInt(value, 10))
+  @Type(() => Number)
   @IsInt()
   @Min(1)
-  pageSize: number = 10;
+  pageSize?: number;
+
+  // <— Permite ?includeVols=1 / true / 0 / false
+  @IsOptional()
+  @IsIn(['1', '0', 'true', 'false'])
+  includeVols?: string;
+
+  // (opcionales, por si los usas en el futuro)
+  @IsOptional()
+  @IsString()
+  estado?: string;
 
   @IsOptional()
-  @Transform(({ value }) => value === 'true')
-  published?: boolean;
+  @IsString()
+  area?: string;
+
+  @IsOptional()
+  @IsString()
+  search?: string;
 }

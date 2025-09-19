@@ -24,6 +24,7 @@ model Project {
   status      ProjectStatus     @default(EN_PROCESO)
   documents   ProjectDocument[]
   images      ProjectImage[]
+  assignments ProjectVolunteer[]
 
   @@unique([title, place, area])
   @@index([status])
@@ -186,8 +187,9 @@ model Voluntario {
   fechaNacimiento DateTime?         @map("fecha_nacimiento")
   fechaIngreso    DateTime          @default(now()) @map("fecha_ingreso")
   estado          ColaboradorEstado @default(ACTIVO)
-  createdAt       DateTime          @default(now()) @map("created_at")
-  updatedAt       DateTime          @updatedAt @map("updated_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  assignments ProjectVolunteer[]
 
   @@map("voluntario")
 }
@@ -230,4 +232,16 @@ model PasswordChangeLog {
   createdAt DateTime            @default(now())
 
   @@index([userId, createdAt])
+}
+
+model ProjectVolunteer {
+  projectId     Int
+  voluntarioId  Int
+  assignedAt    DateTime @default(now())
+
+  project    Project    @relation(fields: [projectId], references: [id])
+  voluntario Voluntario @relation(fields: [voluntarioId], references: [id])
+
+  @@id([projectId, voluntarioId]) // evita duplicados
+  @@map("project_volunteer")
 }
