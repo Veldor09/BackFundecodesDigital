@@ -16,20 +16,36 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  // Prefijo global (opcional)
-  // app.setGlobalPrefix('api');
-
-  // Archivos estáticos: /uploads/*
+  // ───────────────────────────────
+  // Archivos estáticos (p.ej. /uploads/*)
+  // ───────────────────────────────
   app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads/' });
 
-  // Body limits
+  // ───────────────────────────────
+  // Límites de body (JSON / forms)
+  // ───────────────────────────────
   app.use(json({ limit: '10mb' }));
   app.use(urlencoded({ extended: true, limit: '10mb' }));
 
-  // CORS
-  const allowedOrigin = process.env.FRONTEND_URL || 'http://localhost:3000';
+  // ───────────────────────────────
+  // CORS (permite FRONTEND y Swagger UI)
+  // ───────────────────────────────
+  const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const swaggerOrigin = 'http://localhost:4000'; // UI que sirve Nest
+
   app.enableCors({
-    origin: [allowedOrigin],
+    origin: (origin, cb) => {
+      // Permite llamadas de tu front, Swagger UI local y herramientas sin origin (curl/Postman)
+      if (!origin) return cb(null, true);
+      if (
+        origin === FRONTEND_URL ||
+        origin === swaggerOrigin ||
+        /^http:\/\/localhost:\d+$/i.test(origin)
+      ) {
+        return cb(null, true);
+      }
+      return cb(null, false);
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
@@ -44,51 +60,73 @@ async function bootstrap() {
     exposedHeaders: ['ETag'],
   });
 
+  // ───────────────────────────────
   // Validación global
+  // ───────────────────────────────
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true,
-      transform: true,
-      forbidNonWhitelisted: true,
+      whitelist: true,                 // elimina props no declaradas en DTOs
+      transform: true,                 // cast de tipos primitivos (query/params)
+      forbidNonWhitelisted: true,      // 400 si llegan props extra
       transformOptions: { enableImplicitConversion: true },
     }),
   );
 
+  // ───────────────────────────────
   // Filtro global de excepciones
+  // ───────────────────────────────
   app.useGlobalFilters(new HttpExceptionFilter());
 
+  // ───────────────────────────────
   // Proxy/CDN opcional
+  // ───────────────────────────────
   if (process.env.TRUST_PROXY === '1') {
     app.set('trust proxy', 1);
   }
 
-  // Swagger
-  const config = new DocumentBuilder()
+  // ───────────────────────────────
+  // Swagger (con Bearer y persistAuth)
+  // ───────────────────────────────
+  const swaggerConfig = new DocumentBuilder()
     .setTitle('FUNDECODES API')
-    .setDescription('API pública para sitio informativo')
+    .setDescription('API pública y de administración de FUNDECODES')
     .setVersion('1.0')
+    // Importante: el nombre 'bearer' debe coincidir con @ApiBearerAuth('bearer') en tus controladores
     .addBearerAuth(
       {
         type: 'http',
         scheme: 'bearer',
         bearerFormat: 'JWT',
         name: 'Authorization',
-        description: 'Pega aquí tu token JWT (sin comillas).',
+        description: 'Pega tu token JWT (con o sin el prefijo "Bearer ").',
         in: 'header',
       },
       'bearer',
     )
+    // Ayuda a que la UI apunte al server correcto
+    .addServer('http://localhost:4000')
     .build();
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('docs', app, document, {
-    swaggerOptions: { persistAuthorization: true },
+
+  const swaggerDoc = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('docs', app, swaggerDoc, {
+    swaggerOptions: {
+      persistAuthorization: true,       // ← mantiene el token entre recargas
+      displayRequestDuration: true,
+      tryItOutEnabled: true,
+    },
+    customSiteTitle: 'FUNDECODES API Docs',
   });
 
+  // ───────────────────────────────
   // Prisma: cierre limpio
+  // ───────────────────────────────
   const prisma = app.get(PrismaService);
   await prisma.enableShutdownHooks(app);
 
-  const port = process.env.PORT ? Number(process.env.PORT) : 4000;
+  // ───────────────────────────────
+  // Arranque
+  // ───────────────────────────────
+  const port = Number(process.env.PORT ?? 4000);
   await app.listen(port);
 
   const url = `http://localhost:${port}`;

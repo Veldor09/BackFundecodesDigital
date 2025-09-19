@@ -1,4 +1,3 @@
-// prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
 }
@@ -8,32 +7,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-
-enum ProjectStatus {
-  EN_PROCESO
-  FINALIZADO
-  PAUSADO
-}
-
-/// ==== Enums para Collaborator ====
-enum ColaboradorRol {
-  ADMIN
-  COLABORADOR
-}
-
-enum ColaboradorEstado {
-  ACTIVO
-  INACTIVO
-}
-
-enum EmailStatus {
-  PENDING
-  SENT
-  FAILED
-  RETRYING
-}
-
-
 model Project {
   id          Int               @id @default(autoincrement())
   title       String
@@ -41,20 +14,14 @@ model Project {
   summary     String?
   content     String?
   coverUrl    String?
-
-  // Campos requeridos
-  category    String
-  place       String
-  area        String
-
-  status      ProjectStatus     @default(EN_PROCESO)
-
   published   Boolean           @default(false)
   publishedAt DateTime?
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
-
-  // Relaciones
+  area        String
+  category    String
+  place       String
+  status      ProjectStatus     @default(EN_PROCESO)
   documents   ProjectDocument[]
   images      ProjectImage[]
 
@@ -70,8 +37,7 @@ model ProjectImage {
   alt       String?
   order     Int      @default(0)
   createdAt DateTime @default(now())
-
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
   @@index([order])
@@ -83,10 +49,9 @@ model ProjectDocument {
   url       String
   name      String
   mimeType  String?
-  size      Int?
   createdAt DateTime @default(now())
-
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  size      Int?
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
 }
@@ -122,15 +87,13 @@ model VolunteerForm {
 }
 
 model InformationalPage {
-  id            String   @id @default("default") // solo una fila
-  vision        Json     // { title, content, imageUrl }
-  mission       Json     // { title, content, imageUrl }
-  collaborators Json     // Array de Collaborator (para web pública)
-  comments      Json     // Array de CommentItem
+  id            String   @id @default("default")
+  vision        Json
+  mission       Json
+  collaborators Json
+  comments      Json
   updatedAt     DateTime @updatedAt
 }
-
-
 
 model User {
   id        Int        @id @default(autoincrement())
@@ -138,11 +101,12 @@ model User {
   name      String?
   password  String
   verified  Boolean    @default(false)
-  approved  Boolean    @default(false) // bloquear login si la cuenta no está aprobada
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
+  approved  Boolean    @default(false)
 
   roles     UserRole[]
+  emailLogs EmailLog[]        // <-- relación
 }
 
 model Role {
@@ -154,9 +118,8 @@ model Role {
 
 model Permission {
   id          Int     @id @default(autoincrement())
-  key         String  @unique // ej: "users.manage", "roles.manage", "projects.update"
+  key         String  @unique
   description String?
-
   roles       Role[]  @relation("PermissionToRole")
 }
 
@@ -165,12 +128,13 @@ model UserRole {
   userId Int
   roleId Int
 
-  user   User @relation(fields: [userId], references: [id])
-  role   Role @relation(fields: [roleId], references: [id])
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role @relation(fields: [roleId], references: [id], onDelete: Restrict)
 
-  @@unique([userId, roleId]) // evita duplicar el mismo rol para un usuario
+  @@unique([userId, roleId])
+  @@index([userId])
+  @@index([roleId])
 }
-
 
 model Collaborator {
   id                    Int               @id @default(autoincrement())
@@ -184,40 +148,86 @@ model Collaborator {
   estado                ColaboradorEstado @default(ACTIVO)
   createdAt             DateTime          @default(now()) @map("created_at")
   updatedAt             DateTime          @updatedAt @map("updated_at")
-
-  // Gestión de contraseñas
-  tempPasswordExpiresAt DateTime?         @map("temp_password_expires_at")
   passwordUpdatedAt     DateTime?         @map("password_updated_at")
+  tempPasswordExpiresAt DateTime?         @map("temp_password_expires_at")
 
-  @@map("colaborador") // nombre real de la tabla
+  @@map("colaborador")
 }
 
-
+/**
+ * Log de correos. Se vincula opcionalmente a un User para poder
+ * limpiar en cascada al eliminarlo.
+ */
 model EmailLog {
-  id        Int         @id @default(autoincrement())
+  id        Int      @id @default(autoincrement())
   to        String
   subject   String
   template  String?
   payload   Json?
-  status    EmailStatus @default(PENDING)
-  error     String?
-  attempt   Int         @default(0)
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
-}
+  status    String
+  attempt   Int      @default(0)
+  error     String?  @db.VarChar(1000)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
+  // --- relación con User (opcional) ---
+  userId Int?
+  user   User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+}
 model Voluntario {
-  id              Int      @id @default(autoincrement())
-  tipoDocumento   String   @map("tipo_documento") // ej: "Cédula costarricense"
-  numeroDocumento String   @unique @map("numero_documento") @db.VarChar(25)
-  nombreCompleto  String   @map("nombre_completo")
-  email           String   @unique @db.VarChar(160)
-  telefono        String?  @db.VarChar(25)
-  fechaNacimiento DateTime? @map("fecha_nacimiento")
-  fechaIngreso    DateTime @default(now()) @map("fecha_ingreso")
+  id              Int               @id @default(autoincrement())
+  tipoDocumento   String            @map("tipo_documento")
+  numeroDocumento String            @unique @map("numero_documento") @db.VarChar(25)
+  nombreCompleto  String            @map("nombre_completo")
+  email           String            @unique @db.VarChar(160)
+  telefono        String?           @db.VarChar(25)
+  fechaNacimiento DateTime?         @map("fecha_nacimiento")
+  fechaIngreso    DateTime          @default(now()) @map("fecha_ingreso")
   estado          ColaboradorEstado @default(ACTIVO)
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
 
   @@map("voluntario")
+}
+
+enum ProjectStatus {
+  EN_PROCESO
+  FINALIZADO
+  PAUSADO
+}
+
+enum ColaboradorRol {
+  ADMIN
+  COLABORADOR
+}
+
+enum ColaboradorEstado {
+  ACTIVO
+  INACTIVO
+}
+
+enum EmailStatus {
+  PENDING
+  SENT
+  FAILED
+  RETRYING
+}
+
+enum PasswordChangeType {
+  RESET
+  MANUAL
+  INVITE_SET
+}
+
+model PasswordChangeLog {
+  id        Int                 @id @default(autoincrement())
+  userId    Int
+  user      User                @relation(fields: [userId], references: [id])
+  ip        String?
+  type      PasswordChangeType  @default(RESET)
+  createdAt DateTime            @default(now())
+
+  @@index([userId, createdAt])
 }

@@ -10,14 +10,18 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiTags } from '@nestjs/swagger';
+
 import { UsersService } from './users.service';
+
+// DTOs
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { QueryUserDto } from './dto/query-user.dto';
 import { AssignRolesDto } from './dto/assign-roles.dto';
+import { InviteUserDto } from './dto/invite-user.dto';
 
-// 🔐 Guards y decorador de permisos
+// Guards / permisos
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { Permissions } from '../../common/decorators/permissions.decorator';
@@ -25,7 +29,7 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 @ApiTags('Users')
 @ApiBearerAuth('bearer')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
-@Permissions('users.manage') // Requiere este permiso para todas las rutas del controlador
+@Permissions('users.manage')
 @Controller('admin/users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
@@ -56,7 +60,7 @@ export class UsersController {
     return this.usersService.remove(id);
   }
 
-  // -------- Verificación ----------
+  // -------- Verificación / Aprobación ----------
   @Patch(':id/verify')
   verify(
     @Param('id', ParseIntPipe) id: number,
@@ -65,16 +69,20 @@ export class UsersController {
     return this.usersService.verifyUser(id, verified);
   }
 
-  // -------- Aprobación (nuevo) ----------
+  // ✅ Sin body; siempre aprueba en true
   @Patch(':id/approve')
-  approve(
-    @Param('id', ParseIntPipe) id: number,
-    @Body('approved') approved: boolean,
-  ) {
-    return this.usersService.approveUser(id, approved);
+  approve(@Param('id', ParseIntPipe) id: number) {
+    return this.usersService.approveUser(id);
   }
 
-  // -------- Roles por NOMBRE (compatibles con tu servicio actual) ----------
+  // -------- Invitación (PROTEGIDO) ----------
+  @Post('invite')
+  @ApiBody({ type: InviteUserDto })
+  invite(@Body() dto: InviteUserDto) {
+    return this.usersService.inviteUser(dto);
+  }
+
+  // -------- Roles por nombre ----------
   @Post(':id/roles/:role')
   addRole(@Param('id', ParseIntPipe) id: number, @Param('role') role: string) {
     return this.usersService.addRole(id, role);
@@ -88,7 +96,7 @@ export class UsersController {
     return this.usersService.removeRole(id, role);
   }
 
-  // -------- Roles por ID (nuevos) ----------
+  // -------- Roles por ID ----------
   @Get(':id/roles')
   getUserRoles(@Param('id', ParseIntPipe) id: number) {
     return this.usersService.getUserRoles(id);
@@ -108,5 +116,11 @@ export class UsersController {
     @Param('roleId', ParseIntPipe) roleId: number,
   ) {
     return this.usersService.removeRoleById(id, roleId);
+  }
+
+  // (Opcional) Echo para pruebas rápidas del body
+  @Post('_echo')
+  echo(@Body() body: any) {
+    return { received: body };
   }
 }
