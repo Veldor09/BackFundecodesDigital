@@ -1,5 +1,6 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsString, MinLength } from 'class-validator';
+// src/auth/dto/set-password.dto.ts
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsOptional, IsString, MinLength } from 'class-validator';
 
 export class SetPasswordDto {
   @ApiProperty({ description: 'Token JWT recibido por email (30 min de vigencia)' })
@@ -8,11 +9,12 @@ export class SetPasswordDto {
 
   @ApiProperty({ description: 'Nueva contraseña', minLength: 8 })
   @IsString()
-  @MinLength(8)
+  @MinLength(8, { message: 'La contraseña debe tener al menos 8 caracteres' })
   newPassword: string;
 
-  @ApiProperty({ description: 'Confirmación de la nueva contraseña', minLength: 8 })
+  @ApiPropertyOptional({ description: 'Confirmación de la nueva contraseña (opcional si tu UI no la envía)', minLength: 8 })
+  @IsOptional()
   @IsString()
-  @MinLength(8)
-  confirmPassword: string;
+  @MinLength(8, { message: 'La confirmación debe tener al menos 8 caracteres' })
+  confirmPassword?: string;
 }
