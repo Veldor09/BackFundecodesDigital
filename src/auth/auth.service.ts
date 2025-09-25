@@ -5,7 +5,6 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-  // Prisma types pueden no incluir la tabla de auditoría; por eso tipamos como any cuando la usamos.
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { TokenService } from '../common/services/token.service';
@@ -37,7 +36,7 @@ export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
-    private tokens: TokenService, // lo mantenemos por compatibilidad
+    private tokens: TokenService, // compat
     private readonly config: ConfigService,
     private readonly emailService: EmailService,
   ) {}
@@ -113,14 +112,12 @@ export class AuthService {
   }
 
   // ------------------------ Helpers de auditoría ------------------------
-  /** Intenta registrar auditoría sin romper el flujo si la tabla no existe. */
   private async safeAuditCreate(data: {
     userId: number;
     action: 'SET_PASSWORD' | 'RESET_PASSWORD' | 'REQUEST_RESET';
     ip?: string | null;
   }) {
     try {
-      // Si creas el modelo abajo, quedaría prisma.passwordAudit.create(...)
       const db: any = this.prisma as any;
       if (db.passwordAudit?.create) {
         await db.passwordAudit.create({
@@ -132,21 +129,11 @@ export class AuthService {
         });
       }
     } catch {
-      // noop (tolerante)
+      // tolerante
     }
   }
 
   // ---------------- SET PASSWORD (token 30m de invitación) ----------------
-  /**
-   * Establece la contraseña definitiva a partir del token de invitación (30m).
-   * En inviteUser firmas: { email, userId } con PASSWORD_JWT_SECRET.
-   * Este método valida con la misma secret y tolera { id, email } por retrocompatibilidad.
-   *
-   * @param token JWT de invitación
-   * @param newPassword contraseña nueva
-   * @param confirmPassword (opcional) para validar igualdad
-   * @param ip (opcional) IP origen para auditoría
-   */
   async setPasswordWithToken(
     token: string,
     newPassword: string,
@@ -178,7 +165,6 @@ export class AuthService {
       throw new BadRequestException('Token inválido o expirado');
     }
 
-    // Soporta ambas variantes de payload
     const userId = (payload as any).userId ?? (payload as any).id;
     const email = (payload as any).email;
 
@@ -201,7 +187,7 @@ export class AuthService {
       where: { id: user.id },
       data: {
         password,
-        verified: true, // opcional: marcar verificado al establecer contraseña
+        verified: true,
       },
     });
 
@@ -216,37 +202,39 @@ export class AuthService {
 
   // ------------------------ RECUPERAR CONTRASEÑA ------------------------
   /**
-   * Solicita recuperación de contraseña: genera token temporal y envía email.
-   * Siempre devuelve {ok:true} para no revelar si el correo existe.
+   * Si el correo NO existe → lanza 400 para que el front lo muestre.
+   * Si existe → genera token de reset y envía email.
    */
   async requestPasswordReset(email: string) {
-    // Busca el usuario; si no existe, terminamos igual con ok:true (anti-enumeración)
     const user = await this.prisma.user.findUnique({
       where: { email },
       select: { id: true, email: true },
     });
 
+    // ⬇️ cambio clave: ahora SÍ avisamos cuando no existe
     if (!user) {
-      // Respuesta indistinguible
-      return { ok: true };
+      throw new BadRequestException('El correo no está registrado');
     }
 
+    // Alineado con tu .env (usas RESET_JWT_SECRET). Dejamos ambos por compatibilidad.
     const secret =
+      this.config.get<string>('RESET_JWT_SECRET') ||
       this.config.get<string>('RESET_PASSWORD_JWT_SECRET') ||
-      this.config.get<string>('PASSWORD_JWT_SECRET'); // fallback
+      this.config.get<string>('PASSWORD_JWT_SECRET');
     if (!secret) {
-      throw new BadRequestException('RESET_PASSWORD_JWT_SECRET no configurado');
+      throw new BadRequestException('RESET_JWT_SECRET no configurado');
     }
 
     const expiresIn =
-      this.config.get<string | number>('RESET_PASSWORD_JWT_EXPIRES') ?? '30m';
+      this.config.get<string | number>('RESET_JWT_EXPIRES') ??
+      this.config.get<string | number>('RESET_PASSWORD_JWT_EXPIRES') ??
+      '30m';
 
     const token = await this.jwtService.signAsync(
       { userId: user.id, email: user.email, purpose: 'reset' },
       { secret, expiresIn },
     );
 
-    // Enviar email con link de reset
     await this.emailService.sendResetPasswordEmail(user.email, token);
 
     await this.safeAuditCreate({
@@ -260,10 +248,6 @@ export class AuthService {
 
   /**
    * Cambia la contraseña usando el token de recuperación.
-   * @param token JWT de reset
-   * @param newPassword nueva contraseña
-   * @param confirmPassword confirmación (opcional)
-   * @param ip IP origen para auditoría
    */
   async resetPasswordWithToken(
     token: string,
@@ -281,10 +265,11 @@ export class AuthService {
     }
 
     const secret =
+      this.config.get<string>('RESET_JWT_SECRET') ||
       this.config.get<string>('RESET_PASSWORD_JWT_SECRET') ||
       this.config.get<string>('PASSWORD_JWT_SECRET');
     if (!secret) {
-      throw new BadRequestException('RESET_PASSWORD_JWT_SECRET no configurado');
+      throw new BadRequestException('RESET_JWT_SECRET no configurado');
     }
 
     type ResetPayload = { userId: number; email: string; purpose?: string };
