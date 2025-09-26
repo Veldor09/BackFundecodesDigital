@@ -286,3 +286,15 @@ model Sancion {
   @@index([voluntarioId])
   @@index([estado])
 }
+
+
+model SolicitudCompra {
+  id          Int      @id @default(autoincrement())
+  titulo      String
+  descripcion String
+  archivos    String[]
+  estado      String   @default("PENDIENTE")
+  usuarioId   Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

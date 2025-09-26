@@ -15,6 +15,7 @@ import { RolesModule } from './SistemaAdmin/roles/roles.module';
 import { CollaboratorsModule } from './SistemaAdmin/collaborator/collaborators.module';
 import { VolunteerModule } from './SistemaAdmin/Volunteer/volunteer.module';
 import { SancionesModule } from './SistemaAdmin/sanciones/sanciones.module';
+import { SolicitudesModule } from './SistemaAdmin/solicitudes/solicitudes.module'; // 👈 nuevo
 
 // Público
 import { NewsModule } from './news/news.module';
@@ -51,7 +52,7 @@ import { CommonModule } from './common/common.module';
 
         // --- Email (MailerSend SMTP) ---
         MAIL_HOST: Joi.string().default('smtp.mailersend.net'),
-        MAIL_PORT: Joi.number().default(587),           // usa 2525 si tu red bloquea 587
+        MAIL_PORT: Joi.number().default(587), // usa 2525 si tu red bloquea 587
         MAIL_USERNAME: Joi.string().allow('').default(''),
         MAIL_PASSWORD: Joi.string().allow('').default(''),
         MAIL_FROM: Joi.string().default('Fundecodes <no-reply@test.mlsender.net>'),
@@ -82,6 +83,7 @@ import { CommonModule } from './common/common.module';
     CollaboratorsModule,
     VolunteerModule,
     SancionesModule,
+    SolicitudesModule, // 👈 agregado aquí
 
     // Público
     NewsModule,

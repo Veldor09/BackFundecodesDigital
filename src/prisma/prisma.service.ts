@@ -14,7 +14,8 @@ export class PrismaService
 {
   constructor() {
     super({
-      log: ['warn', 'error'], // Cambia a ['query','info','warn','error'] en desarrollo si quieres más logs
+      log: ['warn', 'error'], 
+      // En desarrollo puedes usar: ['query', 'info', 'warn', 'error']
     });
   }
 
