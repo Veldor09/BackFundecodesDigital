@@ -1,4 +1,3 @@
-// src/SistemaAdmin/solicitudes/solicitudes.service.ts
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateSolicitudDto } from './dto/create-solicitud.dto';
@@ -7,6 +6,7 @@ import { CreateSolicitudDto } from './dto/create-solicitud.dto';
 export class SolicitudesService {
   constructor(private prisma: PrismaService) {}
 
+  // Crear una nueva solicitud con archivos adjuntos
   async create(dto: CreateSolicitudDto, archivos: string[], usuarioId?: number) {
     return this.prisma.solicitudCompra.create({
       data: {
@@ -18,12 +18,14 @@ export class SolicitudesService {
     });
   }
 
+  // Listar todas las solicitudes
   async findAll() {
     return this.prisma.solicitudCompra.findMany({
       orderBy: { createdAt: 'desc' },
     });
   }
 
+  // Buscar una solicitud por ID
   async findOne(id: number) {
     const solicitud = await this.prisma.solicitudCompra.findUnique({
       where: { id },
@@ -32,7 +34,11 @@ export class SolicitudesService {
     return solicitud;
   }
 
-  async updateEstado(id: number, estado: 'PENDIENTE' | 'APROBADA' | 'RECHAZADA') {
+  // Actualizar el estado de la solicitud
+  async updateEstado(
+    id: number,
+    estado: 'PENDIENTE' | 'APROBADA' | 'RECHAZADA',
+  ) {
     return this.prisma.solicitudCompra.update({
       where: { id },
       data: { estado },
