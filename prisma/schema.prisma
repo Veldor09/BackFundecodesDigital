@@ -108,9 +108,10 @@ model User {
 
   roles     UserRole[]
   emailLogs EmailLog[]
-
-  // ⬇️ agrega esta línea para cerrar la relación con PasswordChangeLog
   passwordChangeLogs PasswordChangeLog[]
+
+  // ⬇️ Relación inversa con Auditoria
+  auditorias Auditoria[]
 }
 
 model Role {
@@ -158,10 +159,6 @@ model Collaborator {
   @@map("colaborador")
 }
 
-/**
- * Log de correos. Se vincula opcionalmente a un User para poder
- * limpiar en cascada al eliminarlo.
- */
 model EmailLog {
   id        Int      @id @default(autoincrement())
   to        String
@@ -174,12 +171,12 @@ model EmailLog {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // --- relación con User (opcional) ---
   userId Int?
   user   User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([userId])
 }
+
 model Voluntario {
   id              Int               @id @default(autoincrement())
   tipoDocumento   String            @map("tipo_documento")
@@ -193,8 +190,6 @@ model Voluntario {
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
   assignments     ProjectVolunteer[]
-
-  // ⬇️ agrega esta línea para cerrar la relación con Sancion
   sanciones       Sancion[]
 
   @@map("voluntario")
@@ -248,10 +243,9 @@ model ProjectVolunteer {
   project    Project    @relation(fields: [projectId], references: [id])
   voluntario Voluntario @relation(fields: [voluntarioId], references: [id])
 
-  @@id([projectId, voluntarioId]) // evita duplicados
+  @@id([projectId, voluntarioId])
   @@map("project_volunteer")
 }
-
 
 enum SancionTipo {
   LEVE
@@ -287,7 +281,6 @@ model Sancion {
   @@index([estado])
 }
 
-
 model SolicitudCompra {
   id          Int      @id @default(autoincrement())
   titulo      String
@@ -297,4 +290,14 @@ model SolicitudCompra {
   usuarioId   Int?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model Auditoria {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  accion    String
+  detalle   String?
+  createdAt DateTime @default(now())
+
+  user      User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 }

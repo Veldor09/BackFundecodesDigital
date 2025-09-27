@@ -1,4 +1,3 @@
-// src/SistemaAdmin/solicitudes/solicitudes.controller.ts
 import {
   Body,
   Controller,
@@ -41,7 +40,10 @@ export class SolicitudesController {
       type: 'object',
       properties: {
         titulo: { type: 'string', example: 'Compra de materiales' },
-        descripcion: { type: 'string', example: 'Necesito papelería para oficina' },
+        descripcion: {
+          type: 'string',
+          example: 'Necesito papelería para oficina',
+        },
         archivos: {
           type: 'array',
           items: { type: 'string', format: 'binary' },
@@ -68,7 +70,8 @@ export class SolicitudesController {
     @Body() dto: CreateSolicitudDto,
     @UploadedFiles() archivos: Express.Multer.File[],
   ) {
-    const paths = archivos?.map((f) => `/uploads/solicitudes/${f.filename}`) ?? [];
+    const paths =
+      archivos?.map((f) => `/uploads/solicitudes/${f.filename}`) ?? [];
     return this.solicitudesService.create(dto, paths);
   }
 
