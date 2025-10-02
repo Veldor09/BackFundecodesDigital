@@ -109,10 +109,12 @@ model User {
   roles     UserRole[]
   emailLogs EmailLog[]
   passwordChangeLogs PasswordChangeLog[]
-
-  // ⬇️ Relación inversa con Auditoria
   auditorias Auditoria[]
+
+  solicitudHistorial SolicitudHistorial[]
+  solicitudes        SolicitudCompra[]  
 }
+
 
 model Role {
   id          Int          @id @default(autoincrement())
@@ -281,16 +283,46 @@ model Sancion {
   @@index([estado])
 }
 
+enum SolicitudEstado {
+  PENDIENTE
+  APROBADA
+  RECHAZADA
+  VALIDADA
+}
+
 model SolicitudCompra {
-  id          Int      @id @default(autoincrement())
+  id          Int       @id @default(autoincrement())
   titulo      String
   descripcion String
   archivos    String[]
-  estado      String   @default("PENDIENTE")
+  estado      String
+  comentario  String?
   usuarioId   Int?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  usuario     User?     @relation(fields: [usuarioId], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  historial   SolicitudHistorial[]
 }
+
+model SolicitudHistorial {
+  id             Int              @id @default(autoincrement())
+  solicitudId    Int
+  estadoAnterior String
+  estadoNuevo    String
+  createdAt      DateTime         @default(now())
+
+  userId Int?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  solicitud SolicitudCompra @relation(fields: [solicitudId], references: [id], onDelete: Cascade)
+}
+
+
+
+
+
+
+
 
 model Auditoria {
   id        Int      @id @default(autoincrement())
