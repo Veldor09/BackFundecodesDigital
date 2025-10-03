@@ -273,4 +273,39 @@ export class EmailService {
 
     this.logger.log(`Email (reset) enviado a ${to}`);
   }
+
+  // ===== Método genérico para envío simple (sin plantilla) =====
+  async sendMail(options: { to: string; subject: string; text: string; html?: string }) {
+    const { to, subject, text, html } = options;
+
+    const log = await this.safeLogCreate({
+      to,
+      subject,
+      template: 'raw',
+      payload: { text, html },
+      status: 'PENDING' as EmailLogStatus,
+    });
+
+    if (!this.sendEmails) {
+      this.logger.warn(`[DEV-EMAIL OFF] To: ${to}`);
+      this.logger.debug(`[DEV-EMAIL OFF] Subject: ${subject}`);
+      this.logger.debug(`[DEV-EMAIL OFF] Text: ${text}`);
+      await this.safeLogUpdate({ id: log.id }, { attempt: 1, status: 'SENT' as EmailLogStatus });
+      return;
+    }
+
+    await this.sendWithRetry(
+      () =>
+        this.transporter.sendMail({
+          from: this.from,
+          to,
+          subject,
+          text,
+          html: html || undefined,
+        }),
+      log.id,
+    );
+
+    this.logger.log(`Email (raw) enviado a ${to}`);
+  }
 }
