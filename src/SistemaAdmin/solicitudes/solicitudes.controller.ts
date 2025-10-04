@@ -1,4 +1,3 @@
-// src/SistemaAdmin/solicitudes/solicitudes.controller.ts
 import {
   Body,
   Controller,
@@ -9,7 +8,6 @@ import {
   UploadedFiles,
   UseInterceptors,
   Req,
-  UseGuards,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
@@ -30,10 +28,7 @@ import {
   ApiParam,
 } from '@nestjs/swagger';
 
-
-import { JwtAuthGuard } from '../../auth/jwt-auth.guard'; 
 @ApiTags('Solicitudes')
-//@UseGuards(JwtAuthGuard) 
 @Controller('solicitudes')
 export class SolicitudesController {
   constructor(private readonly solicitudesService: SolicitudesService) {}
@@ -72,11 +67,11 @@ export class SolicitudesController {
   create(
     @Body() dto: CreateSolicitudDto,
     @UploadedFiles() archivos: Express.Multer.File[],
-    @Req() req: Request & { user: { id: number } },
+    @Req() req: Request & { user?: { id?: number } },
   ) {
-    const usuarioId = dto.usuarioId ?? req.user?.id;
+    const usuarioId = dto.usuarioId ?? req.user?.id ?? null;
     const paths = archivos?.map((f) => `/uploads/solicitudes/${f.filename}`) ?? [];
-    return this.solicitudesService.create(dto, paths, usuarioId);
+    return this.solicitudesService.create(dto, paths, usuarioId ?? undefined);
   }
 
   /* --------------  LISTAR TODAS  -------------- */
@@ -105,7 +100,7 @@ export class SolicitudesController {
     return this.solicitudesService.historial(+id);
   }
 
-  /* --------------  CAMBIAR ESTADO  -------------- */
+  /* --------------  CAMBIAR ESTADO GENERAL  -------------- */
   @Patch(':id/estado')
   @ApiOperation({ summary: 'Actualizar estado de una solicitud' })
   @ApiParam({ name: 'id', type: Number })
@@ -127,25 +122,34 @@ export class SolicitudesController {
     @Param('id') id: string,
     @Body('estado') estado: 'PENDIENTE' | 'APROBADA' | 'RECHAZADA' | 'VALIDADA',
   ) {
-    const userId = 1; // temporal mientras regresas el JWT
-    return this.solicitudesService.updateEstado(+id, estado, userId);
+    const userId = 1; // temporal (hasta tener JWT)
+    return this.solicitudesService.updateEstado(+id, estado, userId ?? undefined);
   }
 
-  /* --------------  VALIDAR POR CONTADORA  -------------- */
+  /* --------------  VALIDAR POR CONTADORA (con comentario) -------------- */
   @Patch(':id/validar')
-  @ApiOperation({ summary: 'Validar solicitud por contadora' })
+  @ApiOperation({ summary: 'Validar solicitud por contadora (con comentario opcional)' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiOkResponse({ description: 'Solicitud validada' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        comentarioContadora: { type: 'string', example: 'Documentos verificados', nullable: true },
+      },
+    },
+  })
+  @ApiOkResponse({ description: 'Solicitud validada por contadora' })
   validarSolicitud(
     @Param('id') id: string,
+    @Body('comentarioContadora') comentarioContadora?: string,
   ) {
-    const userId = 1; // temporal mientras regresas el JWT
-    return this.solicitudesService.validarPorContadora(+id, userId);
+    const userId = 1; // temporal
+    return this.solicitudesService.validarPorContadora(+id, comentarioContadora ?? null, userId ?? undefined);
   }
 
-  /* --------------  DECISIÓN DIRECTOR  -------------- */
+  /* --------------  DECISIÓN DIRECTOR -------------- */
   @Patch(':id/decision-director')
-  @ApiOperation({ summary: 'Aprobación / rechazo por director' })
+  @ApiOperation({ summary: 'Aprobación o rechazo por director con comentario' })
   @ApiParam({ name: 'id', type: Number })
   @ApiBody({
     schema: {
@@ -156,24 +160,18 @@ export class SolicitudesController {
           enum: ['APROBADA', 'RECHAZADA'],
           example: 'APROBADA',
         },
-        comentario: { type: 'string', example: 'Se aprueba la compra', nullable: true },
+        comentarioDirector: { type: 'string', example: 'Se aprueba la compra', nullable: true },
       },
       required: ['estado'],
     },
   })
-  @ApiOkResponse({ description: 'Decisión registrada' })
+  @ApiOkResponse({ description: 'Decisión del director registrada' })
   decisionDirector(
     @Param('id') id: string,
     @Body('estado') estado: 'APROBADA' | 'RECHAZADA',
-    @Body('comentario') comentario?: string,
+    @Body('comentarioDirector') comentarioDirector?: string,
   ) {
-    // usuario hard-codeado temporalmente
-    const userId = 1;
-    return this.solicitudesService.decisionDirector(
-      +id,
-      estado,
-      comentario ?? null,
-      userId,
-    );
+    const userId = 1; // temporal
+    return this.solicitudesService.decisionDirector(+id, estado, comentarioDirector ?? null, userId ?? undefined);
   }
 }

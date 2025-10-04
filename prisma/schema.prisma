@@ -291,18 +291,20 @@ enum SolicitudEstado {
 }
 
 model SolicitudCompra {
-  id          Int       @id @default(autoincrement())
-  titulo      String
-  descripcion String
-  archivos    String[]
-  estado      String
-  comentario  String?
-  usuarioId   Int?
-  usuario     User?     @relation(fields: [usuarioId], references: [id])
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  historial   SolicitudHistorial[]
+  id                   Int       @id @default(autoincrement())
+  titulo               String
+  descripcion          String
+  archivos             String[]
+  estado               String
+  comentarioContadora  String?   
+  comentarioDirector   String?   
+  usuarioId            Int?
+  usuario              User?     @relation(fields: [usuarioId], references: [id])
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  historial            SolicitudHistorial[]
 }
+
 
 model SolicitudHistorial {
   id             Int              @id @default(autoincrement())
@@ -316,10 +318,6 @@ model SolicitudHistorial {
 
   solicitud SolicitudCompra @relation(fields: [solicitudId], references: [id], onDelete: Cascade)
 }
-
-
-
-
 
 
 
