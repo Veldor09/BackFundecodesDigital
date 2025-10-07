@@ -100,11 +100,11 @@ export class SolicitudesService {
   // =====================================================
   async validarPorContadora(
     id: number,
-    estadoContadora: 'VALIDADA' | 'NO_VALIDADA' | 'RECHAZADA',
+    estadoContadora: 'VALIDADA' | 'PENDIENTE' | 'DEVUELTA',
     comentarioContadora: string | null,
     userId?: number | null,
   ) {
-    const estadosPermitidos = ['VALIDADA', 'NO_VALIDADA', 'RECHAZADA'];
+    const estadosPermitidos = ['VALIDADA', 'PENDIENTE', 'DEVUELTA'];
     if (!estadosPermitidos.includes(estadoContadora)) {
       throw new ForbiddenException(
         `Estado no permitido: ${estadoContadora}. Solo se permiten ${estadosPermitidos.join(', ')}`,
