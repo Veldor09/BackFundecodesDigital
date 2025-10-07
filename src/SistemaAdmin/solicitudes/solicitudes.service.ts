@@ -15,7 +15,9 @@ export class SolicitudesService {
     private emailService: EmailService,
   ) {}
 
-  // ---------------- CREAR ----------------
+  // =====================================================
+  // 🔹 CREAR SOLICITUD
+  // =====================================================
   async create(dto: CreateSolicitudDto, archivos: string[], usuarioId?: number) {
     return this.prisma.solicitudCompra.create({
       data: {
@@ -23,12 +25,15 @@ export class SolicitudesService {
         descripcion: dto.descripcion,
         archivos,
         usuarioId: usuarioId ?? null,
-        estado: 'PENDIENTE',
+        estadoContadora: 'PENDIENTE',
+        estadoDirector: 'PENDIENTE',
       },
     });
   }
 
-  // ---------------- LISTAR ----------------
+  // =====================================================
+  // 🔹 LISTAR TODAS LAS SOLICITUDES
+  // =====================================================
   async findAll() {
     return this.prisma.solicitudCompra.findMany({
       orderBy: { createdAt: 'desc' },
@@ -36,7 +41,9 @@ export class SolicitudesService {
     });
   }
 
-  // ---------------- BUSCAR POR ID ----------------
+  // =====================================================
+  // 🔹 OBTENER SOLICITUD POR ID
+  // =====================================================
   async findOne(id: number) {
     const solicitud = await this.prisma.solicitudCompra.findUnique({
       where: { id },
@@ -46,158 +53,157 @@ export class SolicitudesService {
     return solicitud;
   }
 
-  // ---------------- NOTIFICAR POR CORREO ----------------
-  // ---------------- NOTIFICAR POR CORREO ----------------
-private async notificarCambioEstado(
-  idSolicitud: number,
-  nuevoEstado: string,
-  comentario?: string | null,
-) {
-  const solicitud = await this.prisma.solicitudCompra.findUnique({
-    where: { id: idSolicitud },
-    include: { usuario: true },
-  });
-
-  if (!solicitud || !solicitud.usuario?.email) return;
-
-  const { email, name } = solicitud.usuario;
-  const mensaje = comentario
-    ? `Comentario: ${comentario}`
-    : `Sin comentarios adicionales.`;
-
-  try {
-    await this.emailService.sendMail({
-      to: email,
-      subject: `Actualización de solicitud #${solicitud.id}`,
-      text: `Hola ${name ?? 'usuario'}, tu solicitud "${solicitud.titulo}" cambió de estado a ${nuevoEstado}. ${mensaje}`,
-      html: `
-        <div style="font-family:Arial, sans-serif; line-height:1.6">
-          <p>Hola ${name ?? 'usuario'},</p>
-          <p>Tu solicitud <b>"${solicitud.titulo}"</b> cambió de estado a:</p>
-          <p><b>${nuevoEstado}</b></p>
-          <p>${mensaje}</p>
-          <p>Saludos,<br/>Equipo FUNDECODES</p>
-        </div>
-      `,
+  // =====================================================
+  // 🔹 ENVIAR CORREO AUTOMÁTICO DE CAMBIO DE ESTADO
+  // =====================================================
+  private async notificarCambioEstado(
+    idSolicitud: number,
+    rol: string,
+    nuevoEstado: string,
+    comentario?: string | null,
+  ) {
+    const solicitud = await this.prisma.solicitudCompra.findUnique({
+      where: { id: idSolicitud },
+      include: { usuario: true },
     });
-    console.log(`[MAIL] Notificación enviada a ${email}`);
-  } catch (e) {
-    console.error('[MAIL] Error al enviar correo:', e);
+
+    if (!solicitud || !solicitud.usuario?.email) return;
+
+    const { email, name } = solicitud.usuario;
+    const mensaje = comentario
+      ? `Comentario: ${comentario}`
+      : `Sin comentarios adicionales.`;
+
+    try {
+      await this.emailService.sendMail({
+        to: email,
+        subject: `Actualización de solicitud #${solicitud.id}`,
+        text: `Hola ${name ?? 'usuario'}, tu solicitud "${solicitud.titulo}" cambió de estado (${rol}) a ${nuevoEstado}. ${mensaje}`,
+        html: `
+          <div style="font-family:Arial, sans-serif; line-height:1.6">
+            <p>Hola ${name ?? 'usuario'},</p>
+            <p>Tu solicitud <b>"${solicitud.titulo}"</b> fue actualizada por el <b>${rol}</b>:</p>
+            <p><b>Nuevo estado:</b> ${nuevoEstado}</p>
+            <p>${mensaje}</p>
+            <p>Saludos,<br/>Equipo FUNDECODES</p>
+          </div>
+        `,
+      });
+      console.log(`[MAIL] ✓ Notificación enviada a ${email}`);
+    } catch (e) {
+      console.error('[MAIL] ✗ Error al enviar correo:', e);
+    }
   }
-}
 
-
-  // ---------------- CAMBIAR ESTADO GENERAL ----------------
-  async updateEstado(
+  // =====================================================
+  // 🔹 VALIDACIÓN / RECHAZO POR CONTADORA
+  // =====================================================
+  async validarPorContadora(
     id: number,
-    estado: 'PENDIENTE' | 'APROBADA' | 'RECHAZADA' | 'VALIDADA',
+    estadoContadora: 'VALIDADA' | 'NO_VALIDADA' | 'RECHAZADA',
+    comentarioContadora: string | null,
     userId?: number | null,
   ) {
+    const estadosPermitidos = ['VALIDADA', 'NO_VALIDADA', 'RECHAZADA'];
+    if (!estadosPermitidos.includes(estadoContadora)) {
+      throw new ForbiddenException(
+        `Estado no permitido: ${estadoContadora}. Solo se permiten ${estadosPermitidos.join(', ')}`,
+      );
+    }
+
     const solicitud = await this.prisma.solicitudCompra.findUnique({ where: { id } });
     if (!solicitud) throw new NotFoundException('Solicitud no encontrada');
 
     const updated = await this.prisma.solicitudCompra.update({
       where: { id },
-      data: { estado },
-    });
-
-    await this.prisma.solicitudHistorial.create({
       data: {
-        solicitudId: id,
-        estadoAnterior: solicitud.estado,
-        estadoNuevo: estado,
-        userId: userId ?? null,
-      },
-    });
-
-    await this.notificarCambioEstado(id, estado);
-    return updated;
-  }
-
-  // ---------------- VALIDAR POR CONTADORA ----------------
-  async validarPorContadora(
-    id: number,
-    comentarioContadora: string | null,
-    userId?: number | null,
-  ) {
-    const solicitud = await this.prisma.solicitudCompra.findUnique({
-      where: { id },
-    });
-    if (!solicitud) throw new NotFoundException('Solicitud no encontrada');
-
-    const updated = await this.prisma.solicitudCompra.update({
-      where: { id },
-      data: {
-        estado: 'VALIDADA',
+        estadoContadora,
         comentarioContadora,
       },
     });
 
+    // Registrar en historial
     await this.prisma.solicitudHistorial.create({
       data: {
         solicitudId: id,
-        estadoAnterior: solicitud.estado,
-        estadoNuevo: 'VALIDADA',
+        estadoAnterior: solicitud.estadoContadora,
+        estadoNuevo: estadoContadora,
         userId: userId ?? null,
       },
     });
 
+    // Auditoría
     await this.prisma.auditoria.create({
       data: {
         userId: userId ?? null,
-        accion: 'VALIDAR_SOLICITUD',
-        detalle: `Solicitud #${id} validada por contadora. Comentario: ${comentarioContadora ?? '—'}`,
+        accion: `CONTADORA_${estadoContadora}`,
+        detalle: `Solicitud #${id} ${estadoContadora.toLowerCase()} por contadora. Comentario: ${
+          comentarioContadora ?? '—'
+        }`,
       },
     });
 
-    await this.notificarCambioEstado(id, 'VALIDADA', comentarioContadora);
+    // Notificación por correo
+    await this.notificarCambioEstado(id, 'contadora', estadoContadora, comentarioContadora);
     return updated;
   }
 
-  // ---------------- APROBACIÓN/RECHAZO POR DIRECTOR ----------------
+  // =====================================================
+  // 🔹 APROBACIÓN / RECHAZO POR DIRECTOR
+  // =====================================================
   async decisionDirector(
     id: number,
-    estado: 'APROBADA' | 'RECHAZADA',
+    estadoDirector: 'APROBADA' | 'RECHAZADA',
     comentarioDirector: string | null,
     userId?: number | null,
   ) {
+    const estadosPermitidos = ['APROBADA', 'RECHAZADA'];
+    if (!estadosPermitidos.includes(estadoDirector)) {
+      throw new ForbiddenException(
+        `Estado no permitido: ${estadoDirector}. Solo se permiten ${estadosPermitidos.join(', ')}`,
+      );
+    }
+
     const solicitud = await this.prisma.solicitudCompra.findUnique({ where: { id } });
     if (!solicitud) throw new NotFoundException('Solicitud no encontrada');
-
-    if (estado !== 'APROBADA' && estado !== 'RECHAZADA') {
-      throw new ForbiddenException('El director solo puede aprobar o rechazar');
-    }
 
     const updated = await this.prisma.solicitudCompra.update({
       where: { id },
       data: {
-        estado,
+        estadoDirector,
         comentarioDirector,
       },
     });
 
+    // Historial
     await this.prisma.solicitudHistorial.create({
       data: {
         solicitudId: id,
-        estadoAnterior: solicitud.estado,
-        estadoNuevo: estado,
+        estadoAnterior: solicitud.estadoDirector,
+        estadoNuevo: estadoDirector,
         userId: userId ?? null,
       },
     });
 
+    // Auditoría
     await this.prisma.auditoria.create({
       data: {
         userId: userId ?? null,
-        accion: `DIRECTOR_${estado}`,
-        detalle: `Solicitud #${id} ${estado.toLowerCase()} por director. Comentario: ${comentarioDirector ?? '—'}`,
+        accion: `DIRECTOR_${estadoDirector}`,
+        detalle: `Solicitud #${id} ${estadoDirector.toLowerCase()} por director. Comentario: ${
+          comentarioDirector ?? '—'
+        }`,
       },
     });
 
-    await this.notificarCambioEstado(id, estado, comentarioDirector);
+    // Correo
+    await this.notificarCambioEstado(id, 'director', estadoDirector, comentarioDirector);
     return updated;
   }
 
-  // ---------------- VER HISTORIAL ----------------
+  // =====================================================
+  // 🔹 VER HISTORIAL
+  // =====================================================
   async historial(id: number) {
     return this.prisma.solicitudHistorial.findMany({
       where: { solicitudId: id },
