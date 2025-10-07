@@ -283,26 +283,35 @@ model Sancion {
   @@index([estado])
 }
 
-enum SolicitudEstado {
+enum EstadoContadora {
+  PENDIENTE
+  VALIDADA
+  NO_VALIDADA
+  RECHAZADA
+}
+
+enum EstadoDirector {
   PENDIENTE
   APROBADA
   RECHAZADA
-  VALIDADA
 }
 
+
 model SolicitudCompra {
-  id                   Int       @id @default(autoincrement())
-  titulo               String
-  descripcion          String
-  archivos             String[]
-  estado               String
-  comentarioContadora  String?   
-  comentarioDirector   String?   
-  usuarioId            Int?
-  usuario              User?     @relation(fields: [usuarioId], references: [id])
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
-  historial            SolicitudHistorial[]
+  id                  Int              @id @default(autoincrement())
+  titulo              String
+  descripcion         String
+  archivos            String[]
+  estado              String           @default("PENDIENTE") 
+  estadoContadora     EstadoContadora  @default(PENDIENTE)
+  estadoDirector      EstadoDirector   @default(PENDIENTE)
+  comentarioContadora String?
+  comentarioDirector  String?
+  usuarioId           Int?
+  usuario             User?            @relation(fields: [usuarioId], references: [id])
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  historial           SolicitudHistorial[]
 }
 
 

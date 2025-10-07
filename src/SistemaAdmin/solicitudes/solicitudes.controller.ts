@@ -1,3 +1,4 @@
+// src/SistemaAdmin/solicitudes/solicitudes.controller.ts
 import {
   Body,
   Controller,
@@ -33,7 +34,9 @@ import {
 export class SolicitudesController {
   constructor(private readonly solicitudesService: SolicitudesService) {}
 
-  /* --------------  CREAR SOLICITUD  -------------- */
+  // =====================================================
+  // 🔹 CREAR SOLICITUD
+  // =====================================================
   @Post()
   @ApiOperation({ summary: 'Crear una nueva solicitud con archivos adjuntos' })
   @ApiConsumes('multipart/form-data')
@@ -74,7 +77,9 @@ export class SolicitudesController {
     return this.solicitudesService.create(dto, paths, usuarioId ?? undefined);
   }
 
-  /* --------------  LISTAR TODAS  -------------- */
+  // =====================================================
+  // 🔹 LISTAR TODAS LAS SOLICITUDES
+  // =====================================================
   @Get()
   @ApiOperation({ summary: 'Listar todas las solicitudes' })
   @ApiOkResponse({ description: 'Listado de solicitudes', isArray: true })
@@ -82,7 +87,9 @@ export class SolicitudesController {
     return this.solicitudesService.findAll();
   }
 
-  /* --------------  OBTENER POR ID  -------------- */
+  // =====================================================
+  // 🔹 OBTENER SOLICITUD POR ID
+  // =====================================================
   @Get(':id')
   @ApiOperation({ summary: 'Obtener una solicitud por ID' })
   @ApiParam({ name: 'id', type: Number })
@@ -91,87 +98,92 @@ export class SolicitudesController {
     return this.solicitudesService.findOne(+id);
   }
 
-  /* --------------  HISTORIAL  -------------- */
+  // =====================================================
+  // 🔹 HISTORIAL DE CAMBIOS
+  // =====================================================
   @Get(':id/historial')
   @ApiOperation({ summary: 'Historial de cambios de una solicitud' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiOkResponse({ description: 'Historial', isArray: true })
+  @ApiOkResponse({ description: 'Historial de la solicitud', isArray: true })
   historial(@Param('id') id: string) {
     return this.solicitudesService.historial(+id);
   }
 
-  /* --------------  CAMBIAR ESTADO GENERAL  -------------- */
-  @Patch(':id/estado')
-  @ApiOperation({ summary: 'Actualizar estado de una solicitud' })
+  // =====================================================
+  // 🔹 VALIDAR / RECHAZAR / NO VALIDAR (CONTADORA)
+  // =====================================================
+  @Patch(':id/validar')
+  @ApiOperation({ summary: 'Validar, no validar o rechazar solicitud (contadora)' })
   @ApiParam({ name: 'id', type: Number })
   @ApiBody({
     schema: {
       type: 'object',
       properties: {
-        estado: {
+        estadoContadora: {
           type: 'string',
-          enum: ['PENDIENTE', 'APROBADA', 'RECHAZADA', 'VALIDADA'],
-          example: 'APROBADA',
+          enum: ['VALIDADA', 'NO_VALIDADA', 'RECHAZADA'],
+          example: 'VALIDADA',
+        },
+        comentarioContadora: {
+          type: 'string',
+          example: 'La factura tiene respaldo correcto.',
+          nullable: true,
         },
       },
-      required: ['estado'],
+      required: ['estadoContadora'],
     },
   })
-  @ApiOkResponse({ description: 'Estado actualizado' })
-  updateEstado(
-    @Param('id') id: string,
-    @Body('estado') estado: 'PENDIENTE' | 'APROBADA' | 'RECHAZADA' | 'VALIDADA',
-  ) {
-    const userId = 1; // temporal (hasta tener JWT)
-    return this.solicitudesService.updateEstado(+id, estado, userId ?? undefined);
-  }
-
-  /* --------------  VALIDAR POR CONTADORA (con comentario) -------------- */
-  @Patch(':id/validar')
-  @ApiOperation({ summary: 'Validar solicitud por contadora (con comentario opcional)' })
-  @ApiParam({ name: 'id', type: Number })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        comentarioContadora: { type: 'string', example: 'Documentos verificados', nullable: true },
-      },
-    },
-  })
-  @ApiOkResponse({ description: 'Solicitud validada por contadora' })
+  @ApiOkResponse({ description: 'Decisión de contadora registrada' })
   validarSolicitud(
     @Param('id') id: string,
+    @Body('estadoContadora') estadoContadora: 'VALIDADA' | 'NO_VALIDADA' | 'RECHAZADA',
     @Body('comentarioContadora') comentarioContadora?: string,
   ) {
-    const userId = 1; // temporal
-    return this.solicitudesService.validarPorContadora(+id, comentarioContadora ?? null, userId ?? undefined);
+    const userId = 1; // 🔸 temporal mientras se integra JWT
+    return this.solicitudesService.validarPorContadora(
+      +id,
+      estadoContadora,
+      comentarioContadora ?? null,
+      userId,
+    );
   }
 
-  /* --------------  DECISIÓN DIRECTOR -------------- */
+  // =====================================================
+  // 🔹 DECISIÓN DEL DIRECTOR
+  // =====================================================
   @Patch(':id/decision-director')
-  @ApiOperation({ summary: 'Aprobación o rechazo por director con comentario' })
+  @ApiOperation({ summary: 'Aprobación o rechazo por director' })
   @ApiParam({ name: 'id', type: Number })
   @ApiBody({
     schema: {
       type: 'object',
       properties: {
-        estado: {
+        estadoDirector: {
           type: 'string',
           enum: ['APROBADA', 'RECHAZADA'],
           example: 'APROBADA',
         },
-        comentarioDirector: { type: 'string', example: 'Se aprueba la compra', nullable: true },
+        comentarioDirector: {
+          type: 'string',
+          example: 'Se aprueba la compra de materiales.',
+          nullable: true,
+        },
       },
-      required: ['estado'],
+      required: ['estadoDirector'],
     },
   })
   @ApiOkResponse({ description: 'Decisión del director registrada' })
   decisionDirector(
     @Param('id') id: string,
-    @Body('estado') estado: 'APROBADA' | 'RECHAZADA',
+    @Body('estadoDirector') estadoDirector: 'APROBADA' | 'RECHAZADA',
     @Body('comentarioDirector') comentarioDirector?: string,
   ) {
-    const userId = 1; // temporal
-    return this.solicitudesService.decisionDirector(+id, estado, comentarioDirector ?? null, userId ?? undefined);
+    const userId = 1; // 🔸 temporal hasta implementar JWT
+    return this.solicitudesService.decisionDirector(
+      +id,
+      estadoDirector,
+      comentarioDirector ?? null,
+      userId,
+    );
   }
 }
