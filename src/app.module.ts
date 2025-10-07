@@ -16,6 +16,7 @@ import { CollaboratorsModule } from './SistemaAdmin/collaborator/collaborators.m
 import { VolunteerModule } from './SistemaAdmin/Volunteer/volunteer.module';
 import { SancionesModule } from './SistemaAdmin/sanciones/sanciones.module';
 import { SolicitudesModule } from './SistemaAdmin/solicitudes/solicitudes.module'; // 👈 nuevo
+import { ContabilidadModule } from './SistemaAdmin/contabilidad/contabilidad.module';
 
 // Público
 import { NewsModule } from './news/news.module';
@@ -84,6 +85,7 @@ import { CommonModule } from './common/common.module';
     VolunteerModule,
     SancionesModule,
     SolicitudesModule, // 👈 agregado aquí
+    ContabilidadModule,
 
     // Público
     NewsModule,

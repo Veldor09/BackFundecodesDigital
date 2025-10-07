@@ -7,6 +7,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum TipoTransaccion {
+  ingreso
+  egreso
+}
+
 model Project {
   id          Int               @id @default(autoincrement())
   title       String
@@ -25,6 +30,12 @@ model Project {
   documents   ProjectDocument[]
   images      ProjectImage[]
   assignments ProjectVolunteer[]
+
+
+  presupuestos         Presupuesto[]
+  transacciones        Transaccion[]
+  documentosContables  DocumentoContable[]
+
 
   @@unique([title, place, area])
   @@index([status])
@@ -283,26 +294,35 @@ model Sancion {
   @@index([estado])
 }
 
-enum SolicitudEstado {
+enum EstadoContadora {
+  PENDIENTE
+  VALIDADA
+  NO_VALIDADA
+  RECHAZADA
+}
+
+enum EstadoDirector {
   PENDIENTE
   APROBADA
   RECHAZADA
-  VALIDADA
 }
 
+
 model SolicitudCompra {
-  id                   Int       @id @default(autoincrement())
-  titulo               String
-  descripcion          String
-  archivos             String[]
-  estado               String
-  comentarioContadora  String?   
-  comentarioDirector   String?   
-  usuarioId            Int?
-  usuario              User?     @relation(fields: [usuarioId], references: [id])
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
-  historial            SolicitudHistorial[]
+  id                  Int              @id @default(autoincrement())
+  titulo              String
+  descripcion         String
+  archivos            String[]
+  estado              String           @default("PENDIENTE") 
+  estadoContadora     EstadoContadora  @default(PENDIENTE)
+  estadoDirector      EstadoDirector   @default(PENDIENTE)
+  comentarioContadora String?
+  comentarioDirector  String?
+  usuarioId           Int?
+  usuario             User?            @relation(fields: [usuarioId], references: [id])
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  historial           SolicitudHistorial[]
 }
 
 
@@ -320,6 +340,54 @@ model SolicitudHistorial {
 }
 
 
+model Presupuesto {
+  id             String   @id @default(cuid())
+  projectId      Int
+  proyecto       String         // título legible del proyecto
+  mes            Int            // 1..12
+  anio           Int
+  montoAsignado  Decimal  @db.Decimal(16,2)
+  montoEjecutado Decimal  @db.Decimal(16,2)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  project        Project  @relation(fields: [projectId], references: [id])
+
+  @@index([projectId, anio, mes])
+}
+
+model Transaccion {
+  id          String   @id @default(cuid())
+  projectId   Int
+  proyecto    String
+  fecha       DateTime
+  tipo        TipoTransaccion
+  categoria   String
+  descripcion String
+  monto       Decimal  @db.Decimal(16,2)
+  createdAt   DateTime @default(now())
+
+  project     Project  @relation(fields: [projectId], references: [id])
+
+  @@index([projectId, fecha, tipo])
+}
+
+model DocumentoContable {
+  id        String   @id @default(cuid())
+  projectId Int
+  proyecto  String
+  mes       Int
+  anio      Int
+  nombre    String
+  tipoMime  String
+  bytes     Int
+  url       String
+  createdAt DateTime @default(now())
+
+  project   Project  @relation(fields: [projectId], references: [id])
+
+  @@index([projectId, anio, mes])
+}
 
 
 model Auditoria {
