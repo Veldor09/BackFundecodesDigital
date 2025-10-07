@@ -121,7 +121,7 @@ export class SolicitudesController {
       properties: {
         estadoContadora: {
           type: 'string',
-          enum: ['VALIDADA', 'NO_VALIDADA', 'RECHAZADA'],
+          enum: ['VALIDADA', 'PENDIENTE', 'DEVUELTA'],
           example: 'VALIDADA',
         },
         comentarioContadora: {
@@ -136,7 +136,7 @@ export class SolicitudesController {
   @ApiOkResponse({ description: 'Decisión de contadora registrada' })
   validarSolicitud(
     @Param('id') id: string,
-    @Body('estadoContadora') estadoContadora: 'VALIDADA' | 'NO_VALIDADA' | 'RECHAZADA',
+    @Body('estadoContadora') estadoContadora: 'VALIDADA' | 'PENDIENTE' | 'DEVUELTA',
     @Body('comentarioContadora') comentarioContadora?: string,
   ) {
     const userId = 1; // 🔸 temporal mientras se integra JWT

@@ -297,8 +297,7 @@ model Sancion {
 enum EstadoContadora {
   PENDIENTE
   VALIDADA
-  NO_VALIDADA
-  RECHAZADA
+  DEVUELTA
 }
 
 enum EstadoDirector {
