@@ -17,6 +17,7 @@ import { VolunteerModule } from './SistemaAdmin/Volunteer/volunteer.module';
 import { SancionesModule } from './SistemaAdmin/sanciones/sanciones.module';
 import { SolicitudesModule } from './SistemaAdmin/solicitudes/solicitudes.module'; // 👈 nuevo
 import { ContabilidadModule } from './SistemaAdmin/contabilidad/contabilidad.module';
+import { BillingModule } from './SistemaAdmin/billing/billing.module';
 
 // Público
 import { NewsModule } from './news/news.module';
@@ -86,6 +87,7 @@ import { CommonModule } from './common/common.module';
     SancionesModule,
     SolicitudesModule, // 👈 agregado aquí
     ContabilidadModule,
+    BillingModule,
 
     // Público
     NewsModule,
