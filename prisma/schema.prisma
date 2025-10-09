@@ -13,29 +13,33 @@ enum TipoTransaccion {
 }
 
 model Project {
-  id          Int               @id @default(autoincrement())
+  id          Int                @id @default(autoincrement())
   title       String
-  slug        String            @unique
+  slug        String             @unique
   summary     String?
   content     String?
   coverUrl    String?
-  published   Boolean           @default(false)
+  published   Boolean            @default(false)
   publishedAt DateTime?
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
   area        String
   category    String
   place       String
-  status      ProjectStatus     @default(EN_PROCESO)
+  status      ProjectStatus      @default(EN_PROCESO)
   documents   ProjectDocument[]
   images      ProjectImage[]
   assignments ProjectVolunteer[]
 
+  presupuestos        Presupuesto[]
+  transacciones       Transaccion[]
+  documentosContables DocumentoContable[]
 
-  presupuestos         Presupuesto[]
-  transacciones        Transaccion[]
-  documentosContables  DocumentoContable[]
-
+  billingRequests    BillingRequest[]
+  billingInvoices    BillingInvoice[]
+  programAllocations ProgramAllocation[]
+  payments           Payment[]
+  receipts           Receipt[]
 
   @@unique([title, place, area])
   @@index([status])
@@ -108,24 +112,23 @@ model InformationalPage {
 }
 
 model User {
-  id        Int        @id @default(autoincrement())
-  email     String     @unique
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
   name      String?
   password  String
-  verified  Boolean    @default(false)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  approved  Boolean    @default(false)
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  approved  Boolean  @default(false)
 
-  roles     UserRole[]
-  emailLogs EmailLog[]
+  roles              UserRole[]
+  emailLogs          EmailLog[]
   passwordChangeLogs PasswordChangeLog[]
-  auditorias Auditoria[]
+  auditorias         Auditoria[]
 
   solicitudHistorial SolicitudHistorial[]
-  solicitudes        SolicitudCompra[]  
+  solicitudes        SolicitudCompra[]
 }
-
 
 model Role {
   id          Int          @id @default(autoincrement())
@@ -142,12 +145,12 @@ model Permission {
 }
 
 model UserRole {
-  id     Int  @id @default(autoincrement())
+  id     Int @id @default(autoincrement())
   userId Int
   roleId Int
 
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role   Role @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Restrict)
 
   @@unique([userId, roleId])
   @@index([userId])
@@ -191,17 +194,17 @@ model EmailLog {
 }
 
 model Voluntario {
-  id              Int               @id @default(autoincrement())
-  tipoDocumento   String            @map("tipo_documento")
-  numeroDocumento String            @unique @map("numero_documento") @db.VarChar(25)
-  nombreCompleto  String            @map("nombre_completo")
-  email           String            @unique @db.VarChar(160)
-  telefono        String?           @db.VarChar(25)
-  fechaNacimiento DateTime?         @map("fecha_nacimiento")
-  fechaIngreso    DateTime          @default(now()) @map("fecha_ingreso")
-  estado          ColaboradorEstado @default(ACTIVO)
-  createdAt       DateTime          @default(now()) @map("created_at")
-  updatedAt       DateTime          @updatedAt @map("updated_at")
+  id              Int                @id @default(autoincrement())
+  tipoDocumento   String             @map("tipo_documento")
+  numeroDocumento String             @unique @map("numero_documento") @db.VarChar(25)
+  nombreCompleto  String             @map("nombre_completo")
+  email           String             @unique @db.VarChar(160)
+  telefono        String?            @db.VarChar(25)
+  fechaNacimiento DateTime?          @map("fecha_nacimiento")
+  fechaIngreso    DateTime           @default(now()) @map("fecha_ingreso")
+  estado          ColaboradorEstado  @default(ACTIVO)
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
   assignments     ProjectVolunteer[]
   sanciones       Sancion[]
 
@@ -238,20 +241,20 @@ enum PasswordChangeType {
 }
 
 model PasswordChangeLog {
-  id        Int                 @id @default(autoincrement())
+  id        Int                @id @default(autoincrement())
   userId    Int
-  user      User                @relation(fields: [userId], references: [id])
+  user      User               @relation(fields: [userId], references: [id])
   ip        String?
-  type      PasswordChangeType  @default(RESET)
-  createdAt DateTime            @default(now())
+  type      PasswordChangeType @default(RESET)
+  createdAt DateTime           @default(now())
 
   @@index([userId, createdAt])
 }
 
 model ProjectVolunteer {
-  projectId     Int
-  voluntarioId  Int
-  assignedAt    DateTime @default(now())
+  projectId    Int
+  voluntarioId Int
+  assignedAt   DateTime @default(now())
 
   project    Project    @relation(fields: [projectId], references: [id])
   voluntario Voluntario @relation(fields: [voluntarioId], references: [id])
@@ -274,21 +277,21 @@ enum SancionEstado {
 }
 
 model Sancion {
-  id               Int            @id @default(autoincrement())
+  id               Int           @id @default(autoincrement())
   voluntarioId     Int
   tipo             SancionTipo
   motivo           String
   descripcion      String?
   fechaInicio      DateTime
   fechaVencimiento DateTime?
-  estado           SancionEstado  @default(ACTIVA)
+  estado           SancionEstado @default(ACTIVA)
   creadaPor        String?
   revocadaPor      String?
   fechaRevocacion  DateTime?
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
-  voluntario       Voluntario     @relation(fields: [voluntarioId], references: [id])
+  voluntario Voluntario @relation(fields: [voluntarioId], references: [id])
 
   @@index([voluntarioId])
   @@index([estado])
@@ -306,67 +309,64 @@ enum EstadoDirector {
   RECHAZADA
 }
 
-
 model SolicitudCompra {
-  id                  Int              @id @default(autoincrement())
+  id                  Int                  @id @default(autoincrement())
   titulo              String
   descripcion         String
   archivos            String[]
-  estado              String           @default("PENDIENTE") 
-  estadoContadora     EstadoContadora  @default(PENDIENTE)
-  estadoDirector      EstadoDirector   @default(PENDIENTE)
+  estado              String               @default("PENDIENTE")
+  estadoContadora     EstadoContadora      @default(PENDIENTE)
+  estadoDirector      EstadoDirector       @default(PENDIENTE)
   comentarioContadora String?
   comentarioDirector  String?
   usuarioId           Int?
-  usuario             User?            @relation(fields: [usuarioId], references: [id])
-  createdAt           DateTime         @default(now())
-  updatedAt           DateTime         @updatedAt
+  usuario             User?                @relation(fields: [usuarioId], references: [id])
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
   historial           SolicitudHistorial[]
 }
 
-
 model SolicitudHistorial {
-  id             Int              @id @default(autoincrement())
+  id             Int      @id @default(autoincrement())
   solicitudId    Int
   estadoAnterior String
   estadoNuevo    String
-  createdAt      DateTime         @default(now())
+  createdAt      DateTime @default(now())
 
   userId Int?
-  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user   User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   solicitud SolicitudCompra @relation(fields: [solicitudId], references: [id], onDelete: Cascade)
 }
 
-
 model Presupuesto {
   id             String   @id @default(cuid())
   projectId      Int
-  proyecto       String         // título legible del proyecto
-  mes            Int            // 1..12
+  proyecto       String // título legible del proyecto
+  mes            Int // 1..12
   anio           Int
-  montoAsignado  Decimal  @db.Decimal(16,2)
-  montoEjecutado Decimal  @db.Decimal(16,2)
+  montoAsignado  Decimal  @db.Decimal(16, 2)
+  montoEjecutado Decimal  @db.Decimal(16, 2)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  project        Project  @relation(fields: [projectId], references: [id])
+  project Project @relation(fields: [projectId], references: [id])
 
   @@index([projectId, anio, mes])
 }
 
 model Transaccion {
-  id          String   @id @default(cuid())
+  id          String          @id @default(cuid())
   projectId   Int
   proyecto    String
   fecha       DateTime
   tipo        TipoTransaccion
   categoria   String
   descripcion String
-  monto       Decimal  @db.Decimal(16,2)
-  createdAt   DateTime @default(now())
+  monto       Decimal         @db.Decimal(16, 2)
+  createdAt   DateTime        @default(now())
 
-  project     Project  @relation(fields: [projectId], references: [id])
+  project Project @relation(fields: [projectId], references: [id])
 
   @@index([projectId, fecha, tipo])
 }
@@ -383,11 +383,110 @@ model DocumentoContable {
   url       String
   createdAt DateTime @default(now())
 
-  project   Project  @relation(fields: [projectId], references: [id])
+  project Project @relation(fields: [projectId], references: [id])
 
   @@index([projectId, anio, mes])
 }
 
+// ===== Facturación =====
+enum Currency {
+  CRC
+  USD
+}
+
+enum BillingRequestStatus {
+  PENDING
+  VALIDATED
+  APPROVED
+  REJECTED
+  PAID
+}
+
+model BillingRequest {
+  id              Int                  @id @default(autoincrement())
+  amount          Decimal              @db.Decimal(16, 2)
+  concept         String
+  projectId       Int
+  status          BillingRequestStatus @default(PENDING)
+  createdBy       String?
+  draftInvoiceUrl String?
+  history         Json?
+
+  // 1:1 inversa (FK en BillingInvoice.requestId)
+  invoice BillingInvoice?
+
+  project  Project   @relation(fields: [projectId], references: [id])
+  payments Payment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+}
+
+model BillingInvoice {
+  id        String   @id @default(cuid())
+  requestId Int      @unique
+  projectId Int
+  number    String
+  date      DateTime
+  total     Decimal  @db.Decimal(16, 2)
+  currency  Currency
+  url       String?
+  mime      String?
+  bytes     Int?
+  isValid   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  request BillingRequest @relation(fields: [requestId], references: [id])
+  project Project        @relation(fields: [projectId], references: [id])
+
+  @@index([projectId, date])
+}
+
+model ProgramAllocation {
+  id        String   @id @default(cuid())
+  projectId Int
+  concept   String
+  amount    Decimal  @db.Decimal(16, 2)
+  date      DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@index([projectId, date])
+}
+
+model Payment {
+  id        String   @id @default(cuid())
+  requestId Int
+  projectId Int
+  amount    Decimal  @db.Decimal(16, 2)
+  currency  Currency
+  reference String
+  date      DateTime
+
+  project  Project        @relation(fields: [projectId], references: [id])
+  request  BillingRequest @relation(fields: [requestId], references: [id])
+  receipts Receipt[]
+
+  @@index([projectId, date])
+}
+
+model Receipt {
+  id         String   @id @default(cuid())
+  projectId  Int
+  paymentId  String?
+  url        String
+  mime       String
+  bytes      Int
+  filename   String
+  uploadedAt DateTime @default(now())
+
+  project Project  @relation(fields: [projectId], references: [id])
+  payment Payment? @relation(fields: [paymentId], references: [id])
+
+  @@index([projectId, uploadedAt])
+}
 
 model Auditoria {
   id        Int      @id @default(autoincrement())
@@ -396,5 +495,5 @@ model Auditoria {
   detalle   String?
   createdAt DateTime @default(now())
 
-  user      User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 }
