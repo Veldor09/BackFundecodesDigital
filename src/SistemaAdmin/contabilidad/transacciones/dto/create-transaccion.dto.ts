@@ -6,6 +6,8 @@ export class CreateTransaccionDto {
   @IsEnum(['ingreso', 'egreso'] as any)
   tipo: 'ingreso' | 'egreso';
 
+  @IsEnum(['CRC','USD','EUR'] as const) moneda: 'CRC'|'USD'|'EUR';
+
   @ApiProperty() @IsString()
   categoria: string;
 
@@ -28,6 +30,8 @@ export class CreateTransaccionDto {
 export class UpdateTransaccionDto {
   @IsOptional() @IsEnum(['ingreso', 'egreso'] as any)
   tipo?: 'ingreso' | 'egreso';
+
+  @IsOptional() @IsEnum(['CRC','USD','EUR'] as const) moneda?: 'CRC'|'USD'|'EUR';
 
   @IsOptional() @IsString()
   categoria?: string;
