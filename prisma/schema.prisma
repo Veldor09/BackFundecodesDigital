@@ -364,6 +364,10 @@ model Transaccion {
   categoria   String
   descripcion String
   monto       Decimal         @db.Decimal(16, 2)
+
+
+  moneda      Currency @default(CRC)
+
   createdAt   DateTime        @default(now())
 
   project Project @relation(fields: [projectId], references: [id])
@@ -392,6 +396,7 @@ model DocumentoContable {
 enum Currency {
   CRC
   USD
+  EUR
 }
 
 enum BillingRequestStatus {
