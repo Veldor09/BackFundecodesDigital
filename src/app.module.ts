@@ -15,9 +15,10 @@ import { RolesModule } from './SistemaAdmin/roles/roles.module';
 import { CollaboratorsModule } from './SistemaAdmin/collaborator/collaborators.module';
 import { VolunteerModule } from './SistemaAdmin/Volunteer/volunteer.module';
 import { SancionesModule } from './SistemaAdmin/sanciones/sanciones.module';
-import { SolicitudesModule } from './SistemaAdmin/solicitudes/solicitudes.module'; // 👈 nuevo
+import { SolicitudesModule } from './SistemaAdmin/solicitudes/solicitudes.module';
 import { ContabilidadModule } from './SistemaAdmin/contabilidad/contabilidad.module';
 import { BillingModule } from './SistemaAdmin/billing/billing.module';
+import { ReportesModule } from './SistemaAdmin/reportes/reportes.module'; // ✅ Nuevo módulo de reportes
 
 // Público
 import { NewsModule } from './news/news.module';
@@ -54,13 +55,13 @@ import { CommonModule } from './common/common.module';
 
         // --- Email (MailerSend SMTP) ---
         MAIL_HOST: Joi.string().default('smtp.mailersend.net'),
-        MAIL_PORT: Joi.number().default(587), // usa 2525 si tu red bloquea 587
+        MAIL_PORT: Joi.number().default(587),
         MAIL_USERNAME: Joi.string().allow('').default(''),
         MAIL_PASSWORD: Joi.string().allow('').default(''),
         MAIL_FROM: Joi.string().default('Fundecodes <no-reply@test.mlsender.net>'),
         SEND_EMAILS: Joi.string().valid('true', 'false').default('true'),
 
-        // --- (Legacy) SENDGRID opcional: ya no se usa, pero no bloquea el arranque ---
+        // --- (Legacy) SENDGRID opcional ---
         SENDGRID_API_KEY: Joi.string().optional(),
 
         // --- Otros ---
@@ -85,9 +86,10 @@ import { CommonModule } from './common/common.module';
     CollaboratorsModule,
     VolunteerModule,
     SancionesModule,
-    SolicitudesModule, // 👈 agregado aquí
+    SolicitudesModule,
     ContabilidadModule,
     BillingModule,
+    ReportesModule, // ✅ añadido aquí
 
     // Público
     NewsModule,
@@ -98,7 +100,7 @@ import { CommonModule } from './common/common.module';
     // Auth
     AuthModule,
 
-    // Servicios comunes (token + email + welcome flow)
+    // Comunes
     CommonModule,
   ],
 })
