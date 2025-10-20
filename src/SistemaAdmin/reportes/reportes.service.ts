@@ -418,7 +418,7 @@ async generarExcel(data: any): Promise<Buffer> {
         ? 'SOLICITUDES'
         : modulo.toUpperCase();
 
-    // Nueva hoja
+    // Nueva hoja para el módulo
     const moduloSheet = workbook.addWorksheet(nombreModulo);
 
     moduloSheet.mergeCells('A1', 'F1');
@@ -450,7 +450,6 @@ async generarExcel(data: any): Promise<Buffer> {
         { key: 'createdAt', label: 'Fecha' },
       ];
     } else if (modulo === 'solicitudes') {
-      // 🔹 Igual al PDF: Estado, Contadora, Director, Creada
       columnas = [
         { key: 'id', label: 'ID' },
         { key: 'titulo', label: 'Título' },
@@ -494,15 +493,22 @@ async generarExcel(data: any): Promise<Buffer> {
       const row = columnas.map((col) => {
         let val = item[col.key];
 
-        if (typeof val === 'string' && col.key.toLowerCase().includes('estado')) {
+        // ✅ Traducir estados (estado o status)
+        if (
+          typeof val === 'string' &&
+          (col.key.toLowerCase().includes('estado') || col.key.toLowerCase().includes('status'))
+        ) {
           return this.traducirEstado(val);
         }
 
+        // ✅ Formatear montos
         if (col.key.toLowerCase() === 'amount' && val != null) {
           return this.formatMoney(val);
         }
 
+        // ✅ Formatear fechas
         if (val instanceof Date) return this.formatDate(val);
+
         if (val == null || val === '') return '-';
         return String(val);
       });
@@ -510,7 +516,7 @@ async generarExcel(data: any): Promise<Buffer> {
       moduloSheet.addRow(row);
     }
 
-    // ===== Formato =====
+    // ===== Ajuste de columnas =====
     moduloSheet.columns = columnas.map(() => ({ width: 20 }));
     const thirdRow = moduloSheet.getRow(3);
     if (thirdRow) thirdRow.alignment = { horizontal: 'center' };
@@ -533,6 +539,8 @@ async generarExcel(data: any): Promise<Buffer> {
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer);
 }
+
+
 
 
 
@@ -567,20 +575,23 @@ async generarExcel(data: any): Promise<Buffer> {
   }
 
   private traducirEstado(valor: string): string {
-    if (!valor) return '-';
-    const map: Record<string, string> = {
-      PAID: 'Pagado',
-      PENDING: 'Pendiente',
-      APPROVED: 'Aprobado',
-      REJECTED: 'Rechazado',
-      CANCELLED: 'Cancelado',
-      IN_PROGRESS: 'En proceso',
-      COMPLETED: 'Completado',
-      ACTIVE: 'Activo',
-      INACTIVE: 'Inactivo',
-      OPEN: 'Abierto',
-      CLOSED: 'Cerrado',
-    };
-    return map[valor.toUpperCase()] ?? valor;
-  }
+  if (!valor) return '-';
+  const map: Record<string, string> = {
+    PAID: 'Pagado',
+    PENDING: 'Pendiente',
+    APPROVED: 'Aprobado',
+    REJECTED: 'Rechazado',
+    CANCELLED: 'Cancelado',
+    IN_PROGRESS: 'En proceso',
+    COMPLETED: 'Completado',
+    ACTIVE: 'Activo',
+    INACTIVE: 'Inactivo',
+    OPEN: 'Abierto',
+    CLOSED: 'Cerrado',
+    VALIDATED: 'Validada',
+    VALIDADA: 'Validada',
+  };
+  return map[valor.toUpperCase()] ?? valor;
+}
+
 }
