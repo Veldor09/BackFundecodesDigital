@@ -1,59 +1,59 @@
-import { Type, Transform } from 'class-transformer';
-import {
-  IsArray,
-  IsEnum,
-  IsInt,
-  IsOptional,
-  IsString,
-  ValidateIf,
-  ArrayNotEmpty,
-} from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsEnum, IsOptional, IsString, IsDateString } from 'class-validator';
 
 export enum TipoPeriodo {
-  ANIO = 'año',
-  RANGO = 'rango',
-}
-
-export enum TipoReporte {
-  MENSUAL = 'Mensual',
-  TRIMESTRAL = 'Trimestral',
-  CUATRIMESTRAL = 'Cuatrimestral',
-  SEMESTRAL = 'Semestral',
-  ANUAL = 'Anual',
+  ANIO = 'ANIO',
+  RANGO = 'RANGO',
 }
 
 export class FiltroInformeDto {
-  @IsEnum(TipoPeriodo)
-  periodo!: TipoPeriodo;
+  @ApiProperty({
+    description: 'Periodo del informe (ANIO o RANGO)',
+    enum: TipoPeriodo,
+    example: 'RANGO',
+  })
+  periodo: TipoPeriodo;
 
-  @ValidateIf((o) => o.periodo === TipoPeriodo.ANIO)
-  @Type(() => Number)
-  @IsInt()
-  anio?: number;
-
-  @ValidateIf((o) => o.periodo === TipoPeriodo.RANGO)
+  @ApiPropertyOptional({
+    description: 'Año a consultar (solo si periodo=ANIO)',
+    example: '2025',
+  })
+  @IsOptional()
   @IsString()
+  anio?: string;
+
+  @ApiPropertyOptional({
+    description: 'Fecha de inicio (solo si periodo=RANGO)',
+    example: '2024-01-01',
+  })
+  @IsOptional()
+  @IsDateString()
   fechaInicio?: string;
 
-  @ValidateIf((o) => o.periodo === TipoPeriodo.RANGO)
-  @IsString()
+  @ApiPropertyOptional({
+    description: 'Fecha de fin (solo si periodo=RANGO)',
+    example: '2025-12-31',
+  })
+  @IsOptional()
+  @IsDateString()
   fechaFin?: string;
 
-  @IsEnum(TipoReporte)
-  tipoReporte!: TipoReporte;
-
-  /**
-   * Permite recibir tanto un array como una cadena separada por comas.
-   * Ejemplo válido: "projects,billing,solicitudes"
-   */
-  @Transform(({ value }) => {
-    if (typeof value === 'string') {
-      return value.split(',').map((v) => v.trim());
-    }
-    return value;
+  @ApiProperty({
+    description: 'Tipo de agrupación: Mensual, Trimestral, Cuatrimestral, Semestral, Anual',
+    example: 'Mensual',
   })
-  @IsArray()
-  @ArrayNotEmpty()
-  @IsString({ each: true })
-  modulos!: string[];
+  tipoReporte: string;
+
+  @ApiProperty({
+    description: 'Lista separada por comas con los módulos a incluir en el informe',
+    example: 'projects,billing,solicitudes,collaborators,volunteers',
+  })
+  modulos: string;
+
+  @ApiProperty({
+    description: 'Formato del informe (pdf o excel)',
+    example: 'pdf',
+  })
+  @IsOptional()
+  formato?: string;
 }
