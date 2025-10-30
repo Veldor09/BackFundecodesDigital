@@ -24,6 +24,7 @@ import { NewsModule } from './news/news.module';
 import { ContactModule } from './PaginaInfo/contact/contact.module';
 import { VolunteersFormModule } from './PaginaInfo/volunteers/volunteer-form.module';
 import { InformationalPageModule } from './PaginaInfo/informational-page.module';
+import { CommentsModule } from './PaginaInfo/comments/comments.module';
 
 // Auth
 import { AuthModule } from './auth/auth.module';
@@ -94,6 +95,7 @@ import { CommonModule } from './common/common.module';
     ContactModule,
     VolunteersFormModule,
     InformationalPageModule,
+    CommentsModule,
 
     // Auth
     AuthModule,

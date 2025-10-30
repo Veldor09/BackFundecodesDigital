@@ -1,42 +1,36 @@
-import { ApiProperty } from '@nestjs/swagger';
-import {
-  IsEmail,
-  IsOptional,
-  IsString,
-  MinLength,
-  IsBoolean,
-  IsArray,
-  ArrayNotEmpty,
-  ArrayUnique,
-} from 'class-validator';
+// src/SistemaAdmin/users/dto/create-user.dto.ts
+import { IsEmail, IsOptional, IsString, IsBoolean, IsArray, IsIn, MinLength } from 'class-validator';
+
+export const ROLE_VALUES = [
+  'admin',
+  'voluntario',
+  'colaboradorfacturas',
+  'colaboradorvoluntariado',
+  'colaboradorproyecto',
+  'colaboradorcontabilidad',
+  'colaboradorvoluntario',
+] as const;
+
+export type RoleName = typeof ROLE_VALUES[number];
 
 export class CreateUserDto {
-  @ApiProperty({ example: 'nuevo@fundecodes.org' })
   @IsEmail()
-  email: string;
+  email!: string;
 
-  @ApiProperty({ example: 'Juan Pérez', required: false })
   @IsOptional()
   @IsString()
   name?: string;
 
-  @ApiProperty({ example: 'ClaveTemporal123' })
-  @IsString()
-  @MinLength(6)
-  password: string;
-
-  @ApiProperty({ example: false, required: false })
   @IsOptional()
   @IsBoolean()
   verified?: boolean;
 
-  @ApiProperty({
-    example: ['USER'],
-    required: false,
-    description: 'ADMIN/USER',
-  })
+  @IsOptional()
+  @MinLength(8)
+  password?: string;
+
   @IsOptional()
   @IsArray()
-  @ArrayUnique()
-  roles?: string[];
+  @IsIn(ROLE_VALUES, { each: true })
+  roles?: RoleName[];
 }

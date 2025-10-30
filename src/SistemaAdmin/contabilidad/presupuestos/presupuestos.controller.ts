@@ -1,10 +1,18 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query, HttpCode } from '@nestjs/common';
+// src/SistemaAdmin/contabilidad/presupuestos/presupuestos.controller.ts
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query, HttpCode, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { PresupuestosService } from './presupuestos.service';
 import { CreatePresupuestoDto, UpdatePresupuestoDto } from './dto/create-presupuesto.dto';
 
+// ⬇️ Guards y permisos (ajusta rutas si fuera necesario)
+import { JwtAuthGuard } from '../../../auth/jwt-auth.guard';
+import { PermissionsGuard } from '../../../common/guards/permissions.guard';
+import { Permissions } from '../../../common/decorators/permissions.decorator';
+
 @ApiTags('Contabilidad - Presupuestos')
 @ApiBearerAuth('bearer')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@Permissions('contabilidad:access')
 @Controller('contabilidad/presupuestos')
 export class PresupuestosController {
   constructor(private service: PresupuestosService) {}

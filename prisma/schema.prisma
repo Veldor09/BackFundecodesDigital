@@ -164,7 +164,7 @@ model Collaborator {
   cedula                String            @unique @db.VarChar(25)
   fechaNacimiento       DateTime?         @map("fecha_nacimiento")
   telefono              String?           @db.VarChar(25)
-  rol                   ColaboradorRol    @default(COLABORADOR)
+  rol                   ColaboradorRol    @default(colaboradorproyecto)
   passwordHash          String            @map("password_hash") @db.VarChar(255)
   estado                ColaboradorEstado @default(ACTIVO)
   createdAt             DateTime          @default(now()) @map("created_at")
@@ -217,10 +217,15 @@ enum ProjectStatus {
   PAUSADO
 }
 
+
 enum ColaboradorRol {
-  ADMIN
-  COLABORADOR
+  admin
+  colaboradorfactura
+  colaboradorvoluntariado
+  colaboradorproyecto
+  colaboradorcontabilidad
 }
+
 
 enum ColaboradorEstado {
   ACTIVO
@@ -501,4 +506,13 @@ model Auditoria {
   createdAt DateTime @default(now())
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+model Comment {
+  id        Int      @id @default(autoincrement())
+  author    String
+  text      String
+  visible   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

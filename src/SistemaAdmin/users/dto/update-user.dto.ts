@@ -1,29 +1,11 @@
-import { PartialType, ApiPropertyOptional } from '@nestjs/swagger';
-import { CreateUserDto } from './create-user.dto';
-import {
-  IsOptional,
-  IsString,
-  MinLength,
-  IsBoolean,
-  IsArray,
-  ArrayUnique,
-} from 'class-validator';
+// src/SistemaAdmin/users/dto/update-user.dto.ts
+import { PartialType } from '@nestjs/mapped-types';
+import { CreateUserDto, RoleName, ROLE_VALUES } from './create-user.dto';
+import { IsOptional, IsArray, IsIn } from 'class-validator';
 
 export class UpdateUserDto extends PartialType(CreateUserDto) {
-  @ApiPropertyOptional({ example: 'NuevaClave123' })
-  @IsOptional()
-  @IsString()
-  @MinLength(6)
-  password?: string;
-
-  @ApiPropertyOptional({ example: true })
-  @IsOptional()
-  @IsBoolean()
-  verified?: boolean;
-
-  @ApiPropertyOptional({ example: ['ADMIN', 'USER'] })
   @IsOptional()
   @IsArray()
-  @ArrayUnique()
-  roles?: string[];
+  @IsIn(ROLE_VALUES, { each: true })
+  roles?: RoleName[];
 }

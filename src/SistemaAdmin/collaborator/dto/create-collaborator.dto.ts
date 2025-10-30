@@ -9,6 +9,7 @@ import {
   MaxLength,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import { CollaboratorRol } from './collaborator-rol.enum';
 import { CollaboratorEstado } from './collaborator-estado.enum';
 
@@ -82,11 +83,18 @@ export class CreateCollaboratorDto {
   @ApiProperty({
     enum: CollaboratorRol,
     example: CollaboratorRol.ADMIN,
-    description: 'Rol del colaborador (ADMIN o COLABORADOR)',
+    description:
+      'Rol del colaborador. Valores: admin | colaboradorfactura | colaboradorvoluntariado | colaboradorproyecto | colaboradorcontabilidad',
     required: false,
   })
   @IsOptional()
-  @IsEnum(CollaboratorRol, { message: 'El rol debe ser ADMIN o COLABORADOR' })
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.toLowerCase() : value,
+  )
+  @IsEnum(CollaboratorRol, {
+    message:
+      'El rol debe ser uno de: admin, colaboradorfactura, colaboradorvoluntariado, colaboradorproyecto, colaboradorcontabilidad',
+  })
   rol?: CollaboratorRol;
 
   @ApiProperty({

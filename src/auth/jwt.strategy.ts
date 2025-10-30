@@ -8,7 +8,8 @@ type JwtPayload = {
   sub: number;
   email: string;
   roles?: string[];
-  perms?: string[];
+  permissions?: string[]; // ✅ nuevo campo estándar
+  perms?: string[];       // compat antiguo
   iat?: number;
   exp?: number;
 };
@@ -19,8 +20,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
   constructor(private readonly config: ConfigService) {
     const secret = config.get<string>('JWT_SECRET') ?? 'dev-secret';
-    // Log (parcial) para confirmar que está leyendo el mismo secret
-    // 👇 muestra longitud y los 2 primeros/últimos chars (no el secret completo)
     const safePreview =
       typeof secret === 'string' && secret.length >= 4
         ? `${secret.slice(0, 2)}***${secret.slice(-2)}`
@@ -38,12 +37,25 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload) {
-    this.logger.debug(`JWT validate ok -> sub=${payload.sub}, email=${payload.email}`);
+    const roles = payload.roles ?? [];
+    const permissions = payload.permissions ?? payload.perms ?? [];
+
+    this.logger.debug(
+      `JWT validate ok -> sub=${payload.sub}, email=${payload.email}, roles=${roles.length}, perms=${permissions.length}`,
+    );
+
     return {
+      // ids
       id: payload.sub,
+      userId: payload.sub, // ✅ alias útil para otros módulos
+
+      // identidad
       email: payload.email,
-      roles: payload.roles ?? [],
-      perms: payload.perms ?? [],
+
+      // autorización
+      roles,
+      permissions, // ✅ clave estándar para PermissionsGuard
+      perms: permissions, // compat con código que lea req.user.perms
     };
   }
 }
