@@ -10,14 +10,20 @@ import {
   UseInterceptors,
   UploadedFile,
   HttpCode,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiConsumes, ApiBody, ApiTags, ApiQuery } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
-import type { Request } from 'express';               // 👈 usa el tipo correcto para req
+import type { Request } from 'express';
 import { DocumentosService } from './documentos.service';
 import { CreateDocumentoDto } from './dto/create-documento.dto';
+
+// ⬇️ Guards y permisos (ajusta rutas si fuera necesario)
+import { JwtAuthGuard } from '../../../auth/jwt-auth.guard';
+import { PermissionsGuard } from '../../../common/guards/permissions.guard';
+import { Permissions } from '../../../common/decorators/permissions.decorator';
 
 // ✔️ Firma correcta del callback: (error: Error | null, filename: string) => void
 function fileName(
@@ -31,6 +37,8 @@ function fileName(
 
 @ApiTags('Contabilidad - Documentos')
 @ApiBearerAuth('bearer')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@Permissions('contabilidad:access')
 @Controller('contabilidad/documentos')
 export class DocumentosController {
   constructor(private service: DocumentosService) {}
@@ -43,7 +51,7 @@ export class DocumentosController {
         filename: fileName,
       }),
       limits: { fileSize: 10 * 1024 * 1024 },
-      // ✔️ Firma correcta del fileFilter y llamadas con 2 args
+      // ✔️ fileFilter con 2 args en el callback
       fileFilter: (
         req: Request,
         file: Express.Multer.File,
@@ -56,7 +64,7 @@ export class DocumentosController {
           'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ];
         if (!allowed.includes(file.mimetype)) {
-          return cb(new Error('Tipo no permitido'), false); // 👈 dos argumentos
+          return cb(new Error('Tipo no permitido'), false);
         }
         cb(null, true);
       },

@@ -9,11 +9,18 @@ import {
   Body,
   Query,
   ParseIntPipe,
+  UseGuards,
 } from '@nestjs/common';
+import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import { Permissions } from '../../common/decorators/permissions.decorator';
+
 import { VolunteerService } from './volunteer.service';
 import { CreateVolunteerDto } from './dto/create-volunteer.dto';
 import { UpdateVolunteerDto } from './dto/update-volunteer.dto';
 
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@Permissions('voluntario:access')
 @Controller('voluntarios')
 export class VolunteerController {
   constructor(private readonly volunteerService: VolunteerService) {}
@@ -66,7 +73,6 @@ export class VolunteerController {
     return this.volunteerService.toggleStatus(id, estado);
   }
 
-  // 👇 NUEVO: eliminar
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.volunteerService.remove(id);

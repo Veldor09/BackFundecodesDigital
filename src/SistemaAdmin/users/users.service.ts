@@ -14,6 +14,8 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as crypto from 'crypto';
 import { EmailService } from '../../common/services/email.service';
+// 👇 tipamos con los modelos de Prisma para evitar never[]
+import { Role } from '@prisma/client';
 
 @Injectable()
 export class UsersService {
@@ -24,54 +26,66 @@ export class UsersService {
     private readonly email: EmailService,
   ) {}
 
-  // ---------- CREATE (envía correo de bienvenida con token 30m) ----------
-  async create(dto: CreateUserDto) {
-    const exists = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+  /* --------------------------------- helpers -------------------------------- */
+  /** Upsertea y devuelve los roles por nombre (para trabajar con UserRole). */
+  private async ensureRolesByName(roleNames: string[]): Promise<Role[]> {
+    if (!roleNames?.length) return [];
+    const unique = Array.from(new Set(roleNames.map((r) => r.trim()).filter(Boolean)));
+    const roles: Role[] = []; // <- evita never[]
+    for (const name of unique) {
+      const role = await this.prisma.role.upsert({
+        where: { name },
+        create: { name },
+        update: {},
+      });
+      roles.push(role);
+    }
+    return roles;
+  }
+
+  /** Crea relaciones UserRole en bloque evitando duplicados. */
+  private async attachRoles(userId: number, roleNames: string[]) {
+    const roles: Role[] = await this.ensureRolesByName(roleNames);
+    if (!roles.length) return;
+
+    await this.prisma.userRole.createMany({
+      data: roles.map((r) => ({ userId, roleId: r.id })), // <- r.id tipado
+      skipDuplicates: true,
     });
+  }
+
+  /* --------------------- CREATE (envía correo de bienvenida) --------------------- */
+  async create(dto: CreateUserDto) {
+    const exists = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (exists) throw new BadRequestException('El correo ya está en uso');
-    if (!dto.password)
-      throw new BadRequestException('La contraseña es obligatoria');
+    if (!dto.password) throw new BadRequestException('La contraseña es obligatoria');
 
     const password = await bcrypt.hash(dto.password, 10);
-    const verified = dto.verified ?? false;
+    // CreateUserDto no define 'verified' => asumimos false (o usa (dto as any).verified si quieres permitirlo)
+    const verified = (dto as any)?.verified ?? false;
+
+    // Rol por defecto si no envían ninguno
+    const roleNames = dto.roles?.length ? dto.roles : ['voluntario'];
 
     const user = await this.prisma.user.create({
       data: { email: dto.email, name: dto.name, password, verified },
     });
 
-    if (dto.roles?.length) {
-      for (const r of dto.roles) {
-        const role = await this.prisma.role.upsert({
-          where: { name: r },
-          create: { name: r },
-          update: {},
-        });
-        await this.prisma.userRole.create({
-          data: { userId: user.id, roleId: role.id },
-        });
-      }
-    }
+    // asignar roles (UserRole)
+    await this.attachRoles(user.id, roleNames);
 
     // Enviar bienvenida (no rompe el create si falla)
     try {
       const secret = this.config.get<string>('PASSWORD_JWT_SECRET');
-      if (!secret) {
-        throw new BadRequestException(
-          'PASSWORD_JWT_SECRET no configurado en el servidor',
-        );
-      }
-      const expiresIn =
-        this.config.get<string | number>('PASSWORD_JWT_EXPIRES') ?? '30m';
+      if (!secret) throw new BadRequestException('PASSWORD_JWT_SECRET no configurado en el servidor');
 
+      const expiresIn = this.config.get<string | number>('PASSWORD_JWT_EXPIRES') ?? '30m';
       const token = await this.jwt.signAsync(
         { email: user.email, userId: user.id },
         { secret, expiresIn, jwtid: crypto.randomUUID() },
       );
 
-      const sendEmailsEnv = (
-        this.config.get<string>('SEND_EMAILS') ?? 'true'
-      ).toLowerCase();
+      const sendEmailsEnv = (this.config.get<string>('SEND_EMAILS') ?? 'true').toLowerCase();
       const sendEmails = sendEmailsEnv !== 'false';
 
       if (!sendEmails) {
@@ -84,16 +98,13 @@ export class UsersService {
       await this.email.sendWelcomeSetPasswordEmail(user.email, token);
     } catch (e: any) {
       // eslint-disable-next-line no-console
-      console.warn(
-        '[CREATE] Aviso: no se pudo enviar el email de bienvenida:',
-        e?.message || e,
-      );
+      console.warn('[CREATE] Aviso: no se pudo enviar el email de bienvenida:', e?.message || e);
     }
 
     return this.findOne(user.id);
   }
 
-  // ---------- INVITAR (crea si no existe, asigna roles, genera token 30m, envía correo) ----------
+  /* --------- INVITAR (crea si no existe, asigna roles, token 30m, email) -------- */
   async inviteUser({
     email,
     name,
@@ -129,35 +140,15 @@ export class UsersService {
         console.log('[INVITE-DEBUG] user.created', user.id);
       }
 
-      // 2) Roles
-      if (roles?.length) {
-        for (const r of roles) {
-          const role = await this.prisma.role.upsert({
-            where: { name: r },
-            create: { name: r },
-            update: {},
-          });
-          const existsRel = await this.prisma.userRole.findFirst({
-            where: { userId: user.id, roleId: role.id },
-          });
-          if (!existsRel) {
-            await this.prisma.userRole.create({
-              data: { userId: user.id, roleId: role.id },
-            });
-          }
-        }
-      }
+      // 2) Roles (por defecto voluntario si no envían)
+      const roleNames = roles?.length ? roles : ['voluntario'];
+      await this.attachRoles(user.id, roleNames);
 
       // 3) Token
       const secret = this.config.get<string>('PASSWORD_JWT_SECRET');
-      if (!secret) {
-        throw new BadRequestException(
-          'PASSWORD_JWT_SECRET no configurado en el servidor',
-        );
-      }
-      const expiresIn =
-        this.config.get<string | number>('PASSWORD_JWT_EXPIRES') ?? '30m';
+      if (!secret) throw new BadRequestException('PASSWORD_JWT_SECRET no configurado en el servidor');
 
+      const expiresIn = this.config.get<string | number>('PASSWORD_JWT_EXPIRES') ?? '30m';
       const token = await this.jwt.signAsync(
         { email: user.email, userId: user.id },
         { secret, expiresIn, jwtid: crypto.randomUUID() },
@@ -166,9 +157,7 @@ export class UsersService {
       console.log('[INVITE-DEBUG] token.created');
 
       // 4) Modo dry-run
-      const sendEmailsEnv = (
-        this.config.get<string>('SEND_EMAILS') ?? 'true'
-      ).toLowerCase();
+      const sendEmailsEnv = (this.config.get<string>('SEND_EMAILS') ?? 'true').toLowerCase();
       const sendEmails = sendEmailsEnv !== 'false';
 
       if (!sendEmails) {
@@ -188,13 +177,11 @@ export class UsersService {
       // eslint-disable-next-line no-console
       console.error('[INVITE-ERROR]', e?.response?.body ?? e?.message ?? e);
       if (e?.status && e?.status < 500) throw e;
-      throw new InternalServerErrorException(
-        e?.message || 'Error interno en invitación',
-      );
+      throw new InternalServerErrorException(e?.message || 'Error interno en invitación');
     }
   }
 
-  // ---------- LIST ----------
+  /* ---------------------------------- LIST ---------------------------------- */
   async findAll(q: QueryUserDto) {
     const { page = 1, limit = 10, search, verified, role } = q;
 
@@ -222,7 +209,7 @@ export class UsersService {
     return { total, page, limit, items };
   }
 
-  // ---------- GET ----------
+  /* ---------------------------------- GET ----------------------------------- */
   async findOne(id: number) {
     const user = await this.prisma.user.findUnique({
       where: { id },
@@ -232,7 +219,7 @@ export class UsersService {
     return user;
   }
 
-  // ---------- UPDATE ----------
+  /* -------------------------------- UPDATE ---------------------------------- */
   async update(id: number, dto: UpdateUserDto) {
     const data: any = {};
     if (dto.email !== undefined) data.email = dto.email;
@@ -243,54 +230,40 @@ export class UsersService {
     await this.prisma.user.update({ where: { id }, data });
 
     if (dto.roles) {
+      // Reemplazo completo de roles
       await this.prisma.userRole.deleteMany({ where: { userId: id } });
-      for (const r of dto.roles) {
-        const role = await this.prisma.role.upsert({
-          where: { name: r },
-          create: { name: r },
-          update: {},
-        });
-        await this.prisma.userRole.create({
-          data: { userId: id, roleId: role.id },
-        });
-      }
+      await this.attachRoles(id, dto.roles);
     }
 
     return this.findOne(id);
   }
 
-  // ---------- DELETE ----------
+  /* -------------------------------- DELETE ---------------------------------- */
   async remove(id: number) {
     await this.prisma.user.delete({ where: { id } });
     return { message: 'Usuario eliminado' };
   }
 
-  // ---------- VERIFY / APPROVE ----------
+  /* ---------------------------- VERIFY / APPROVE ----------------------------- */
   async verifyUser(id: number, verified: boolean) {
     await this.prisma.user.update({ where: { id }, data: { verified } });
     return this.findOne(id);
   }
 
-  // ✅ Ahora siempre deja approved=true (sin body)
+  // ✅ Siempre deja approved=true (sin body)
   async approveUser(id: number) {
     await this.prisma.user.update({ where: { id }, data: { approved: true } });
     return this.findOne(id);
   }
 
-  // ---------- ROLES ----------
+  /* --------------------------------- ROLES ---------------------------------- */
   async addRole(id: number, roleName: string) {
-    const role = await this.prisma.role.upsert({
-      where: { name: roleName },
-      create: { name: roleName },
-      update: {},
-    });
+    const [role] = await this.ensureRolesByName([roleName]); // <- role tipado
     const exists = await this.prisma.userRole.findFirst({
       where: { userId: id, roleId: role.id },
     });
     if (!exists) {
-      await this.prisma.userRole.create({
-        data: { userId: id, roleId: role.id },
-      });
+      await this.prisma.userRole.create({ data: { userId: id, roleId: role.id } });
     }
     return this.findOne(id);
   }
@@ -315,7 +288,7 @@ export class UsersService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('Usuario no encontrado');
 
-    const roles = await this.prisma.role.findMany({
+    const roles: { id: number }[] = await this.prisma.role.findMany({
       where: { id: { in: dto.roleIds } },
       select: { id: true },
     });
@@ -325,7 +298,7 @@ export class UsersService {
     }
 
     await this.prisma.userRole.createMany({
-      data: roles.map((r) => ({ userId, roleId: r.id })),
+      data: roles.map((r) => ({ userId, roleId: r.id })), // <- r.id tipado
       skipDuplicates: true,
     });
 

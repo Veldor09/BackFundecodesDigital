@@ -9,6 +9,8 @@ import {
   UploadedFiles,
   UseInterceptors,
   Req,
+  UseGuards,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
@@ -27,9 +29,18 @@ import {
   ApiOkResponse,
   ApiCreatedResponse,
   ApiParam,
+  ApiBearerAuth,
 } from '@nestjs/swagger';
 
+// ⬇️ Guards y permisos (ajusta los paths si cambian tus carpetas)
+import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import { Permissions } from '../../common/decorators/permissions.decorator';
+
 @ApiTags('Solicitudes')
+@ApiBearerAuth('bearer')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@Permissions('solicitudes:access')
 @Controller('solicitudes')
 export class SolicitudesController {
   constructor(private readonly solicitudesService: SolicitudesService) {}
@@ -70,9 +81,9 @@ export class SolicitudesController {
   create(
     @Body() dto: CreateSolicitudDto,
     @UploadedFiles() archivos: Express.Multer.File[],
-    @Req() req: Request & { user?: { id?: number } },
+    @Req() req: Request & { user?: { id?: number; userId?: number } },
   ) {
-    const usuarioId = dto.usuarioId ?? req.user?.id ?? null;
+    const usuarioId = dto.usuarioId ?? req.user?.userId ?? req.user?.id ?? null;
     const paths = archivos?.map((f) => `/uploads/solicitudes/${f.filename}`) ?? [];
     return this.solicitudesService.create(dto, paths, usuarioId ?? undefined);
   }
@@ -88,32 +99,32 @@ export class SolicitudesController {
   }
 
   // =====================================================
+  // 🔹 HISTORIAL DE CAMBIOS (ruta específica ANTES de :id)
+  // =====================================================
+  @Get(':id/historial')
+  @ApiOperation({ summary: 'Historial de cambios de una solicitud' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiOkResponse({ description: 'Historial de la solicitud', isArray: true })
+  historial(@Param('id', ParseIntPipe) id: number) {
+    return this.solicitudesService.historial(id);
+  }
+
+  // =====================================================
   // 🔹 OBTENER SOLICITUD POR ID
   // =====================================================
   @Get(':id')
   @ApiOperation({ summary: 'Obtener una solicitud por ID' })
   @ApiParam({ name: 'id', type: Number })
   @ApiOkResponse({ description: 'Solicitud encontrada' })
-  findOne(@Param('id') id: string) {
-    return this.solicitudesService.findOne(+id);
+  findOne(@Param('id', ParseIntPipe) id: number) {
+    return this.solicitudesService.findOne(id);
   }
 
   // =====================================================
-  // 🔹 HISTORIAL DE CAMBIOS
-  // =====================================================
-  @Get(':id/historial')
-  @ApiOperation({ summary: 'Historial de cambios de una solicitud' })
-  @ApiParam({ name: 'id', type: Number })
-  @ApiOkResponse({ description: 'Historial de la solicitud', isArray: true })
-  historial(@Param('id') id: string) {
-    return this.solicitudesService.historial(+id);
-  }
-
-  // =====================================================
-  // 🔹 VALIDAR / RECHAZAR / NO VALIDAR (CONTADORA)
+  // 🔹 VALIDAR / DEVOLVER (CONTADORA)
   // =====================================================
   @Patch(':id/validar')
-  @ApiOperation({ summary: 'Validar, no validar o rechazar solicitud (contadora)' })
+  @ApiOperation({ summary: 'Validar o devolver solicitud (contadora)' })
   @ApiParam({ name: 'id', type: Number })
   @ApiBody({
     schema: {
@@ -135,13 +146,14 @@ export class SolicitudesController {
   })
   @ApiOkResponse({ description: 'Decisión de contadora registrada' })
   validarSolicitud(
-    @Param('id') id: string,
+    @Param('id', ParseIntPipe) id: number,
     @Body('estadoContadora') estadoContadora: 'VALIDADA' | 'PENDIENTE' | 'DEVUELTA',
-    @Body('comentarioContadora') comentarioContadora?: string,
+    @Body('comentarioContadora') comentarioContadora: string | undefined,
+    @Req() req: Request & { user?: { id?: number; userId?: number } },
   ) {
-    const userId = 1; // 🔸 temporal mientras se integra JWT
+    const userId = req.user?.userId ?? req.user?.id ?? undefined;
     return this.solicitudesService.validarPorContadora(
-      +id,
+      id,
       estadoContadora,
       comentarioContadora ?? null,
       userId,
@@ -174,13 +186,14 @@ export class SolicitudesController {
   })
   @ApiOkResponse({ description: 'Decisión del director registrada' })
   decisionDirector(
-    @Param('id') id: string,
+    @Param('id', ParseIntPipe) id: number,
     @Body('estadoDirector') estadoDirector: 'APROBADA' | 'RECHAZADA',
-    @Body('comentarioDirector') comentarioDirector?: string,
+    @Body('comentarioDirector') comentarioDirector: string | undefined,
+    @Req() req: Request & { user?: { id?: number; userId?: number } },
   ) {
-    const userId = 1; // 🔸 temporal hasta implementar JWT
+    const userId = req.user?.userId ?? req.user?.id ?? undefined;
     return this.solicitudesService.decisionDirector(
-      +id,
+      id,
       estadoDirector,
       comentarioDirector ?? null,
       userId,

@@ -12,11 +12,13 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as crypto from 'crypto';
 import { EmailService } from '../../common/services/email.service';
+import { CollaboratorRol } from './dto/collaborator-rol.enum';
+import { CollaboratorEstado } from './dto/collaborator-estado.enum';
 
 const BCRYPT_COST = 12;
 
-type Rol = 'ADMIN' | 'COLABORADOR';
-type Estado = 'ACTIVO' | 'INACTIVO';
+type Rol = CollaboratorRol;
+type Estado = CollaboratorEstado;
 
 type CreateData = {
   nombreCompleto: string;
@@ -47,6 +49,31 @@ export class CollaboratorsService {
   }
 
   // ----------------- Helpers -----------------
+  /** Normaliza rol a minúsculas y lo valida contra el enum actual */
+  private normalizeRol(v?: any): Rol | undefined {
+    if (!v) return undefined;
+    const low = String(v).trim().toLowerCase();
+
+    const allowed = new Set<string>([
+      CollaboratorRol.ADMIN,                     // 'admin'
+      CollaboratorRol.COLABORADORFACTURA,       // 'colaboradorfactura'
+      CollaboratorRol.COLABORADORVOLUNTARIADO,  // 'colaboradorvoluntariado'
+      CollaboratorRol.COLABORADORPROYECTO,      // 'colaboradorproyecto'
+      CollaboratorRol.COLABORADORCONTABILIDAD,  // 'colaboradorcontabilidad'
+    ]);
+
+    return (allowed.has(low) ? (low as Rol) : CollaboratorRol.COLABORADORPROYECTO);
+  }
+
+  /** Normaliza estado a MAYÚSCULAS y lo valida */
+  private normalizeEstado(v?: any): Estado | undefined {
+    if (!v) return undefined;
+    const up = String(v).trim().toUpperCase();
+    return up === CollaboratorEstado.INACTIVO
+      ? CollaboratorEstado.INACTIVO
+      : CollaboratorEstado.ACTIVO;
+  }
+
   private normalizeEmail(v?: string | null) {
     return (v ?? '').trim().toLowerCase();
   }
@@ -90,7 +117,7 @@ export class CollaboratorsService {
   // ========== Protección "último admin activo" ==========
   private async isLastActiveAdmin(userId: number): Promise<boolean> {
     const totalAdminsActivos: number = await this.db.collaborator.count({
-      where: { rol: 'ADMIN', estado: 'ACTIVO' },
+      where: { rol: CollaboratorRol.ADMIN, estado: CollaboratorEstado.ACTIVO },
     });
 
     if (totalAdminsActivos <= 1) {
@@ -98,7 +125,7 @@ export class CollaboratorsService {
         where: { id: userId },
         select: { rol: true, estado: true },
       });
-      return !!me && me.rol === 'ADMIN' && me.estado === 'ACTIVO';
+      return !!me && me.rol === CollaboratorRol.ADMIN && me.estado === CollaboratorEstado.ACTIVO;
     }
     return false;
   }
@@ -108,8 +135,8 @@ export class CollaboratorsService {
     nextRol: Rol,
     nextEstado: Estado,
   ): Promise<void> {
-    const wouldLoseAdmin = nextRol !== 'ADMIN';
-    const wouldBeInactive = nextEstado !== 'ACTIVO';
+    const wouldLoseAdmin = nextRol !== CollaboratorRol.ADMIN;
+    const wouldBeInactive = nextEstado !== CollaboratorEstado.ACTIVO;
     if (wouldLoseAdmin || wouldBeInactive) {
       if (await this.isLastActiveAdmin(id)) {
         throw new BadRequestException(
@@ -158,7 +185,7 @@ export class CollaboratorsService {
           name: name ?? correo.split('@')[0],
           approved: true,
           verified: false,
-          password: hash, // Prisma exige string
+          password: hash,
         },
         select: { id: true, email: true },
       });
@@ -174,7 +201,7 @@ export class CollaboratorsService {
       });
     }
 
-    // Rol
+    // Rol (tabla de roles generales)
     const role = await tx.role.upsert({
       where: { name: rol },
       create: { name: rol },
@@ -204,6 +231,12 @@ export class CollaboratorsService {
         : generateStrongPassword(12);
     const passwordHash = await bcrypt.hash(plainPassword, BCRYPT_COST);
 
+    // Normalizamos rol/estado antes de persistir
+    const roleNormalized: Rol =
+      this.normalizeRol(data.rol) ?? CollaboratorRol.COLABORADORPROYECTO;
+    const estadoNormalized: Estado =
+      this.normalizeEstado(data.estado) ?? CollaboratorEstado.ACTIVO;
+
     const { created, user } = await this.prisma.$transaction(async (tx) => {
       const created = await (tx as any).collaborator.create({
         data: {
@@ -212,9 +245,9 @@ export class CollaboratorsService {
           cedula: data.cedula,
           fechaNacimiento: data.fechaNacimiento ? new Date(data.fechaNacimiento) : null,
           telefono: data.telefono ?? null,
-          rol: (data.rol ?? 'COLABORADOR') as Rol,
+          rol: roleNormalized,
           passwordHash,
-          estado: (data.estado ?? 'ACTIVO') as Estado,
+          estado: estadoNormalized,
           passwordUpdatedAt: new Date(),
           tempPasswordExpiresAt: null,
         },
@@ -236,11 +269,11 @@ export class CollaboratorsService {
         tx,
         correo,
         created.nombreCompleto,
-        (data.rol ?? 'COLABORADOR') as Rol,
+        roleNormalized,
         passwordHash,
       );
 
-      return { created, user }; // user: { id, email }
+      return { created, user };
     });
 
     // Genera token de invitación (30m) y envía correo (no rompe si falla)
@@ -287,8 +320,8 @@ export class CollaboratorsService {
         { telefono: { contains: q, mode: 'insensitive' } },
       ];
     }
-    if (rol) where.rol = rol;
-    if (estado) where.estado = estado;
+    if (rol) where.rol = this.normalizeRol(rol);
+    if (estado) where.estado = this.normalizeEstado(estado);
 
     const [items, total] = await this.prisma.$transaction([
       this.db.collaborator.findMany({
@@ -358,8 +391,10 @@ export class CollaboratorsService {
       this.ensureAge18(data.fechaNacimiento);
     }
 
-    const nextRol = (data.rol ?? existing.rol) as Rol;
-    const nextEstado = (data.estado ?? existing.estado) as Estado;
+    // Normaliza antes de validar y persistir
+    const nextRol: Rol = this.normalizeRol(data.rol ?? existing.rol) as Rol;
+    const nextEstado: Estado = this.normalizeEstado(data.estado ?? existing.estado) as Estado;
+
     await this.ensureNotDemoteLastAdmin(id, nextRol, nextEstado);
 
     const passwordHash = data.password
@@ -380,12 +415,12 @@ export class CollaboratorsService {
               ? new Date(data.fechaNacimiento)
               : null,
           telefono: data.telefono,
-          rol: data.rol as Rol | undefined,
+          rol: data.rol !== undefined ? nextRol : undefined,
           passwordHash,
           ...(passwordHash
             ? { passwordUpdatedAt: new Date(), tempPasswordExpiresAt: null }
             : {}),
-          estado: data.estado as Estado | undefined,
+          estado: data.estado !== undefined ? nextEstado : undefined,
         },
       });
 
@@ -400,7 +435,7 @@ export class CollaboratorsService {
     });
   }
 
-  // -------- TOGGLE STATUS (ACTIVO/INACTIVO) --------
+  // -------- TOGGLE STATUS ----------
   async toggleStatus(id: number) {
     const existing = await this.db.collaborator.findUnique({
       where: { id },
@@ -409,9 +444,11 @@ export class CollaboratorsService {
     if (!existing) throw new NotFoundException('Colaborador no encontrado');
 
     const nextEstado: Estado =
-      existing.estado === 'ACTIVO' ? 'INACTIVO' : 'ACTIVO';
+      existing.estado === CollaboratorEstado.ACTIVO
+        ? CollaboratorEstado.INACTIVO
+        : CollaboratorEstado.ACTIVO;
 
-    if (nextEstado === 'INACTIVO') {
+    if (nextEstado === CollaboratorEstado.INACTIVO) {
       if (await this.isLastActiveAdmin(id)) {
         throw new BadRequestException(
           'No puedes desactivar al único administrador ACTIVO restante.',
@@ -442,7 +479,7 @@ export class CollaboratorsService {
   async deactivate(id: number): Promise<void> {
     const existing = await this.db.collaborator.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Colaborador no encontrado');
-    if (existing.estado === 'INACTIVO') return; // idempotente
+    if (existing.estado === CollaboratorEstado.INACTIVO) return;
 
     if (await this.isLastActiveAdmin(id)) {
       throw new BadRequestException(
@@ -452,7 +489,7 @@ export class CollaboratorsService {
 
     await this.db.collaborator.update({
       where: { id },
-      data: { estado: 'INACTIVO' as Estado },
+      data: { estado: CollaboratorEstado.INACTIVO as Estado },
     });
   }
 

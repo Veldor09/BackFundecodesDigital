@@ -8,6 +8,7 @@ import {
   MaxLength,
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import { CollaboratorRol } from './collaborator-rol.enum';
 import { CollaboratorEstado } from './collaborator-estado.enum';
 
@@ -15,6 +16,10 @@ import { CollaboratorEstado } from './collaborator-estado.enum';
 const CEDULA_REGEX =
   /^(?:\d{1,2}-\d{3,4}-\d{3,4}|[A-Za-z0-9-]{5,25})$/;
 const PHONE_E164_REGEX = /^\+\d{6,20}$/;
+
+// Helper de trim genérico
+const trim = ({ value }: { value: any }) =>
+  typeof value === 'string' ? value.trim() : value;
 
 export class UpdateCollaboratorDto {
   @ApiPropertyOptional({
@@ -24,6 +29,7 @@ export class UpdateCollaboratorDto {
     maxLength: 150,
   })
   @IsOptional()
+  @Transform(trim)
   @IsString()
   @Length(3, 150, {
     message: 'El nombre completo debe tener entre 3 y 150 caracteres',
@@ -36,6 +42,9 @@ export class UpdateCollaboratorDto {
     maxLength: 160,
   })
   @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toLowerCase() : value,
+  )
   @IsEmail({}, { message: 'El correo no tiene un formato válido' })
   @MaxLength(160, { message: 'El correo no puede exceder 160 caracteres' })
   correo?: string;
@@ -46,6 +55,7 @@ export class UpdateCollaboratorDto {
       'Cédula (CR típico o genérico alfanumérico con guiones, 5–25 chars)',
   })
   @IsOptional()
+  @Transform(trim)
   @IsString()
   @Matches(CEDULA_REGEX, { message: 'La cédula no cumple el formato esperado' })
   @Length(5, 25, { message: 'La cédula debe tener entre 5 y 25 caracteres' })
@@ -56,6 +66,7 @@ export class UpdateCollaboratorDto {
     description: 'Fecha de nacimiento (ISO YYYY-MM-DD)',
   })
   @IsOptional()
+  @Transform(trim)
   @IsString({
     message: 'La fecha de nacimiento debe ser una cadena en formato ISO',
   })
@@ -66,6 +77,7 @@ export class UpdateCollaboratorDto {
     description: 'Número de teléfono en formato E.164 (+ y 6–20 dígitos)',
   })
   @IsOptional()
+  @Transform(trim)
   @IsString()
   @Matches(PHONE_E164_REGEX, {
     message: 'El teléfono debe estar en formato + y 6–20 dígitos (E.164)',
@@ -74,16 +86,24 @@ export class UpdateCollaboratorDto {
 
   @ApiPropertyOptional({
     enum: CollaboratorRol,
-    example: CollaboratorRol.COLABORADOR,
-    description: 'Rol del colaborador (ADMIN o COLABORADOR)',
+    example: CollaboratorRol.COLABORADORPROYECTO,
+    description:
+      'Rol del colaborador. Valores: admin | colaboradorfactura | colaboradorvoluntariado | colaboradorproyecto | colaboradorcontabilidad',
   })
   @IsOptional()
-  @IsEnum(CollaboratorRol, { message: 'El rol debe ser ADMIN o COLABORADOR' })
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.toLowerCase() : value,
+  )
+  @IsEnum(CollaboratorRol, {
+    message:
+      'El rol debe ser uno de: admin, colaboradorfactura, colaboradorvoluntariado, colaboradorproyecto, colaboradorcontabilidad',
+  })
   rol?: CollaboratorRol;
 
   @ApiPropertyOptional({
     example: 'NuevoPass123!',
-    description: 'Contraseña en texto plano (se volverá a hashear si se actualiza)',
+    description:
+      'Contraseña en texto plano (se volverá a hashear si se actualiza)',
     minLength: 8,
     maxLength: 100,
   })
@@ -100,6 +120,9 @@ export class UpdateCollaboratorDto {
     description: 'Estado del colaborador (ACTIVO o INACTIVO)',
   })
   @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.toUpperCase() : value,
+  )
   @IsEnum(CollaboratorEstado, {
     message: 'El estado debe ser ACTIVO o INACTIVO',
   })

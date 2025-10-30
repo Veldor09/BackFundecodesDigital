@@ -1,9 +1,26 @@
-import { Controller, Get, Post, Body, Put, Param, Delete, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Put,
+  Param,
+  Delete,
+  Query,
+  ParseIntPipe,
+  UseGuards,
+} from '@nestjs/common';
 import { SancionesService } from './sanciones.service';
 import { CreateSancionDto } from './dto/create-sancion.dto';
 import { UpdateSancionDto } from './dto/update-sancion.dto';
 
-@Controller('api/sanciones')
+import { JwtAuthGuard } from '../../auth/jwt-auth.guard'; // ⬅️ ajusta ruta si es necesario
+import { PermissionsGuard } from '../../common/guards/permissions.guard'; // ⬅️ ajusta ruta
+import { Permissions } from '../../common/decorators/permissions.decorator'; // ⬅️ ajusta ruta
+
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@Permissions('sanciones:access')
+@Controller('sanciones')
 export class SancionesController {
   constructor(private readonly service: SancionesService) {}
 
@@ -29,28 +46,29 @@ export class SancionesController {
     });
   }
 
+  // ⚠️ RUTA ESPECÍFICA ANTES DE ':id' PARA EVITAR COLISIÓN
+  @Get('voluntario/:voluntarioId/activas')
+  activasPorVol(@Param('voluntarioId', ParseIntPipe) voluntarioId: number) {
+    return this.service.activasPorVoluntario(voluntarioId);
+  }
+
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.service.findOne(+id);
+  findOne(@Param('id', ParseIntPipe) id: number) {
+    return this.service.findOne(id);
   }
 
   @Put(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateSancionDto) {
-    return this.service.update(+id, dto);
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateSancionDto) {
+    return this.service.update(id, dto);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.service.remove(+id);
+  remove(@Param('id', ParseIntPipe) id: number) {
+    return this.service.remove(id);
   }
 
   @Put(':id/revocar')
-  revocar(@Param('id') id: string, @Body('revocadaPor') revocadaPor?: string) {
-    return this.service.revocar(+id, revocadaPor);
-  }
-
-  @Get('voluntario/:voluntarioId/activas')
-  activasPorVol(@Param('voluntarioId') voluntarioId: string) {
-    return this.service.activasPorVoluntario(+voluntarioId);
+  revocar(@Param('id', ParseIntPipe) id: number, @Body('revocadaPor') revocadaPor?: string) {
+    return this.service.revocar(id, revocadaPor);
   }
 }
