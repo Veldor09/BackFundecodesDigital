@@ -21,39 +21,37 @@ export class ProjectsService {
     const page = Number(query.page) || 1;
     const pageSize = Number(query.pageSize) || 10;
 
-    // incluir asignaciones (voluntarios) solo si se pide
     const includeVols =
-      query.includeVols === '1' || query.includeVols === 'true';
+      query.includeVols === '1' || query.includeVols === 'true' || query.includeVols === true;
 
-    // saca props que no son filtro directo
-    const {
-      page: _p,
-      pageSize: _s,
-      includeVols: _iv,
-      // puedes sacar aquí otros keys si no deben ir a where
-      ...rest
-    } = query;
-
-    const where: any = { ...rest }; // si quieres, aquí mapeas filtros permitidos
+    // eliminar parámetros no destinados al filtro
+    const { page: _p, pageSize: _s, includeVols: _iv, ...rest } = query;
+    const where: any = { ...rest };
 
     return this.prisma.project.findMany({
       where,
       skip: (page - 1) * pageSize,
       take: pageSize,
       orderBy: { createdAt: 'desc' },
-      include: includeVols
-        ? {
-            // Usamos la tabla intermedia explícita
-            assignments: {
-              include: {
-                voluntario: {
-                  select: { id: true, nombreCompleto: true, email: true },
+      include: {
+        documents: true,
+        images: true,
+        ...(includeVols && {
+          assignments: {
+            include: {
+              voluntario: {
+                select: {
+                  id: true,
+                  nombreCompleto: true,
+                  email: true,
+                  estado: true,
                 },
               },
-              orderBy: { assignedAt: 'desc' },
             },
-          }
-        : undefined,
+            orderBy: { assignedAt: 'desc' },
+          },
+        }),
+      },
     });
   }
 
@@ -64,18 +62,22 @@ export class ProjectsService {
         : { id: Number(idOrSlug) },
       include: {
         documents: true,
-        ...(includeVols
-          ? {
-              assignments: {
-                include: {
-                  voluntario: {
-                    select: { id: true, nombreCompleto: true, email: true },
-                  },
+        images: true,
+        ...(includeVols && {
+          assignments: {
+            include: {
+              voluntario: {
+                select: {
+                  id: true,
+                  nombreCompleto: true,
+                  email: true,
+                  estado: true,
                 },
-                orderBy: { assignedAt: 'desc' },
               },
-            }
-          : {}),
+            },
+            orderBy: { assignedAt: 'desc' },
+          },
+        }),
       },
     });
 
@@ -110,46 +112,39 @@ export class ProjectsService {
     id: number,
     data: { url: string; alt?: string; order?: number },
   ) {
-    // Implementación real pendiente (guardado en DB, etc.)
     return { message: 'Imagen agregada (sin implementación completa)', data };
   }
 
   // ===================== ASIGNACIONES (ProjectVolunteer) =====================
 
-  /** Crea la asignación en la tabla intermedia (evita duplicados por PK compuesta) */
   async assignVolunteer(projectId: number, voluntarioId: number) {
-    // Verifica existencia
     const [project, vol] = await Promise.all([
       this.prisma.project.findUnique({ where: { id: projectId } }),
       this.prisma.voluntario.findUnique({ where: { id: voluntarioId } }),
     ]);
+
     if (!project) throw new NotFoundException('Proyecto no encontrado');
     if (!vol) throw new NotFoundException('Voluntario no encontrado');
 
     try {
       await this.prisma.projectVolunteer.create({
-        data: { projectId, voluntarioId }, // assignedAt tiene default(now())
+        data: { projectId, voluntarioId },
       });
     } catch (e: any) {
-      // P2002 = unique violation (por @@id([projectId, voluntarioId]))
       if (e?.code === 'P2002') {
-        throw new BadRequestException(
-          'Voluntario ya asignado a este proyecto',
-        );
+        throw new BadRequestException('Voluntario ya asignado a este proyecto');
       }
       throw e;
     }
     return { ok: true };
   }
 
-  /** Elimina la asignación por PK compuesta; idempotente si no existe */
   async unassignVolunteer(projectId: number, voluntarioId: number) {
     try {
       await this.prisma.projectVolunteer.delete({
         where: { projectId_voluntarioId: { projectId, voluntarioId } },
       });
     } catch (e: any) {
-      // P2025 = record not found; lo tratamos como idempotente
       if (e?.code !== 'P2025') throw e;
     }
     return { ok: true };
@@ -157,7 +152,6 @@ export class ProjectsService {
 
   // ===================== DOCUMENTOS =====================
 
-  /** Lista los documentos del proyecto */
   async getProjectDocuments(projectId: number) {
     return this.prisma.projectDocument.findMany({
       where: { projectId },
@@ -173,14 +167,11 @@ export class ProjectsService {
     });
   }
 
-  /** Sube un documento (metadatos + storage) */
   async uploadProjectDocument(projectId: number, file: Express.Multer.File) {
     if (!file) throw new BadRequestException('Archivo requerido');
 
-    // Sube al storage (ajusta según tu FilesService)
     const uploaded = await this.filesService.uploadFile(file);
 
-    // Guarda metadatos en DB
     return this.prisma.projectDocument.create({
       data: {
         projectId,
@@ -200,7 +191,6 @@ export class ProjectsService {
     });
   }
 
-  /** Elimina un documento por ID */
   async removeDocumentById(projectId: number, documentId: number) {
     const doc = await this.prisma.projectDocument.findFirst({
       where: { id: documentId, projectId },
@@ -213,7 +203,6 @@ export class ProjectsService {
     return { message: 'Documento eliminado' };
   }
 
-  /** Elimina un documento por nombre (compat) */
   async removeDocumentByName(projectId: number, filename: string) {
     const base = filename.includes('/') ? filename.split('/').pop() ?? '' : filename;
     const decoded = decodeURIComponent(base);
@@ -229,7 +218,6 @@ export class ProjectsService {
     return { message: 'Documento eliminado' };
   }
 
-  /** Elimina un documento por URL exacta (legacy) */
   async removeDocument(projectId: number, url: string) {
     if (!url) throw new BadRequestException('url requerido');
 
@@ -244,7 +232,6 @@ export class ProjectsService {
     return { message: 'Documento eliminado' };
   }
 
-  /** Agrega un documento por URL (sin subir archivo) */
   async addDocument(
     id: number,
     data: { url: string; name: string; mimeType?: string; size?: number },
@@ -283,11 +270,8 @@ export class ProjectsService {
   }
 
   private getStorageKeyFromUrl(url: string): string {
-    // Si ya es key cruda
     if (!url.includes('http')) return url;
-    // Si es URL completa, toma el último segmento
     const last = url.split('/').pop() ?? url;
-    // Ajusta si tu FilesService espera una ruta relativa
     return last;
   }
 }

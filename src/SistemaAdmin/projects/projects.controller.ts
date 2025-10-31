@@ -183,58 +183,24 @@ export class ProjectsController {
     return this.service.getProjectDocuments(id);
   }
 
-  @Post(':id/documents')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: diskStorage({
-        destination: (req, file, cb) => {
-          const dest = join(process.cwd(), 'uploads', 'projects', 'docs');
-          fs.mkdirSync(dest, { recursive: true });
-          cb(null, dest);
-        },
-        filename: (req, file, cb) => {
-          const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-          cb(null, unique + extname(file.originalname));
-        },
-      }),
-      limits: { fileSize: 10 * 1024 * 1024 },
-      fileFilter: (req, file, cb) => {
-        const allowed = [
-          '.pdf',
-          '.doc',
-          '.docx',
-          '.txt',
-          '.jpg',
-          '.jpeg',
-          '.png',
-          '.gif',
-        ];
-        const ext = extname(file.originalname).toLowerCase();
-        if (!allowed.includes(ext)) {
-          return cb(
-            new BadRequestException('Tipo de archivo no permitido'),
-            false,
-          );
-        }
-        cb(null, true);
-      },
-    }),
-  )
-  @ApiConsumes('multipart/form-data')
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: { file: { type: 'string', format: 'binary' } },
-      required: ['file'],
-    },
-  })
-  async uploadProjectDocument(
-    @Param('id', ParseIntPipe) id: number,
-    @UploadedFile() file: Express.Multer.File,
-  ) {
-    if (!file) throw new BadRequestException('Archivo requerido (file)');
-    return this.service.uploadProjectDocument(id, file);
-  }
+@Post(':id/documents')
+@UseInterceptors(FileInterceptor('file'))
+@ApiConsumes('multipart/form-data')
+@ApiBody({
+  schema: {
+    type: 'object',
+    properties: { file: { type: 'string', format: 'binary' } },
+    required: ['file'],
+  },
+})
+async uploadProjectDocument(
+  @Param('id', ParseIntPipe) id: number,
+  @UploadedFile() file: Express.Multer.File,
+) {
+  if (!file) throw new BadRequestException('Archivo requerido (file)');
+  return this.service.uploadProjectDocument(id, file);
+}
+
 
   @Delete(':id/documents/:documentId')
   async deleteProjectDocumentById(
