@@ -418,6 +418,7 @@ model BillingRequest {
   concept         String
   projectId       Int
   status          BillingRequestStatus @default(PENDING)
+  currency    String   @default("CRC") 
   createdBy       String?
   draftInvoiceUrl String?
   history         Json?
