@@ -40,7 +40,6 @@ model Project {
   programAllocations ProgramAllocation[]
   payments           Payment[]
   receipts           Receipt[]
-  reportes           Reporte[]           @relation("ProjectReportes") // 👈 inversa
 
   @@unique([title, place, area])
   @@index([status])
@@ -129,8 +128,6 @@ model User {
 
   solicitudHistorial SolicitudHistorial[]
   solicitudes        SolicitudCompra[]
-  reportes           Reporte[]            @relation("UserReportes")
-  receipts           Receipt[]            @relation("UserReceipts")
 }
 
 model Role {
@@ -220,6 +217,7 @@ enum ProjectStatus {
   PAUSADO
 }
 
+
 enum ColaboradorRol {
   admin
   colaboradorfactura
@@ -227,6 +225,7 @@ enum ColaboradorRol {
   colaboradorproyecto
   colaboradorcontabilidad
 }
+
 
 enum ColaboradorEstado {
   ACTIVO
@@ -371,9 +370,10 @@ model Transaccion {
   descripcion String
   monto       Decimal         @db.Decimal(16, 2)
 
-  moneda Currency @default(CRC)
 
-  createdAt DateTime @default(now())
+  moneda      Currency @default(CRC)
+
+  createdAt   DateTime        @default(now())
 
   project Project @relation(fields: [projectId], references: [id])
 
@@ -418,7 +418,7 @@ model BillingRequest {
   concept         String
   projectId       Int
   status          BillingRequestStatus @default(PENDING)
-  currency        String               @default("CRC")
+  currency    String   @default("CRC") 
   createdBy       String?
   draftInvoiceUrl String?
   history         Json?
@@ -485,52 +485,28 @@ model Payment {
 
 model Receipt {
   id         String   @id @default(cuid())
-  projectId  Int?
+  projectId  Int
   paymentId  String?
-  filename   String
   url        String
   mime       String
   bytes      Int
+  filename   String
   uploadedAt DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  userId     Int?
-  user       User?    @relation("UserReceipts", fields: [userId], references: [id])
-  project    Project? @relation(fields: [projectId], references: [id])
-  payment    Payment? @relation(fields: [paymentId], references: [id])
+
+  project Project  @relation(fields: [projectId], references: [id])
+  payment Payment? @relation(fields: [paymentId], references: [id])
 
   @@index([projectId, uploadedAt])
-  @@index([userId])
-  @@index([uploadedAt])
 }
 
 model Auditoria {
   id        Int      @id @default(autoincrement())
   userId    Int?
-  reporteId Int?
   accion    String
-  modulo    String?
   detalle   String?
-  resultado String?
   createdAt DateTime @default(now())
 
-  user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  reporte Reporte? @relation("ReporteAuditorias", fields: [reporteId], references: [id], onDelete: SetNull)
-}
-
-model Reporte {
-  id         Int      @id @default(autoincrement())
-  projectId  Int?
-  userId     Int?
-  url        String
-  mime       String
-  bytes      Int
-  filename   String
-  uploadedAt DateTime @default(now())
-
-  // Relaciones
-  project    Project?    @relation("ProjectReportes", fields: [projectId], references: [id])
-  user       User?       @relation("UserReportes", fields: [userId], references: [id], onDelete: SetNull)
-  auditorias Auditoria[] @relation("ReporteAuditorias") // ✅ relación bidireccional
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 }
 
 model Comment {
