@@ -1,7 +1,4 @@
-// ===============================================
-// 📁 src/auth/auth.module.ts
-// ===============================================
-
+// src/auth/auth.module.ts
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
@@ -14,56 +11,40 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 
-/**
- * AuthModule
- * --------------------------------------------
- * Módulo principal de autenticación:
- * - Maneja el login y validación de credenciales
- * - Firma/verifica tokens JWT
- * - Expone la estrategia Passport 'jwt'
- * - Exporta servicios y módulos para uso global
- */
 @Module({
   imports: [
-    // 🌱 Variables de entorno (JWT_SECRET, expiración, etc.)
+    // Variables de entorno
     ConfigModule,
 
-    // 🧩 Base de datos (Prisma) y utilidades comunes (Mailer, etc.)
+    // DB y servicios comunes (EmailService, etc.)
     PrismaModule,
     CommonModule,
 
-    // 🔐 Configurar Passport con la estrategia por defecto "jwt"
+    // Passport con estrategia por defecto "jwt"
     PassportModule.register({
       defaultStrategy: 'jwt',
-      property: 'user', // req.user
-      session: false,   // JWT = sin sesiones
+      property: 'user',
+      session: false,
     }),
 
-    // 🔑 Configurar el módulo JWT de manera asíncrona (usa ConfigService)
+    // JWT configurado desde env
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (cfg: ConfigService) => ({
         secret: cfg.get<string>('JWT_SECRET') ?? 'dev-secret',
-        signOptions: {
-          expiresIn: cfg.get<string>('JWT_EXPIRES_IN') ?? '1d', // por defecto: 1 día
-          algorithm: 'HS256',
-        },
+        signOptions: { expiresIn: '1d' },
       }),
     }),
   ],
-
   controllers: [AuthController],
-
   providers: [
     AuthService,
-    JwtStrategy, // 👈 registra automáticamente la estrategia 'jwt' en Passport
+    JwtStrategy, // registra la estrategia "jwt" en Passport
   ],
-
   exports: [
-    // Permite que otros módulos usen autenticación y JWT sin reconfigurar
     AuthService,
-    JwtModule,      // para inyectar JwtService en otros servicios
-    PassportModule, // para usar AuthGuard('jwt') o JwtAuthGuard fuera de AuthModule
+    JwtModule,       // para inyectar JwtService en otros módulos (p.ej. CollaboratorsService/UsersService)
+    PassportModule,  // para usar AuthGuard('jwt') fuera
   ],
 })
 export class AuthModule {}
