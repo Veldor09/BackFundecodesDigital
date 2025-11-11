@@ -1,55 +1,47 @@
-// ============================================================
 // src/main.ts
-// ============================================================
-
 import 'reflect-metadata';
+
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { PrismaService } from './prisma/prisma.service';
+
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { json, urlencoded } from 'express';
 import { join } from 'path';
+
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  // ============================================================
-  // 🌐 Prefijo global para toda la API
-  // ============================================================
+  // ✅ Prefijo global para toda la API
   app.setGlobalPrefix('api');
 
-  // ============================================================
-  // 📁 Archivos estáticos (p.ej. /uploads/*)
-  // ============================================================
+  // Archivos estáticos (p.ej. /uploads/*)
   app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads/' });
 
-  // ============================================================
-  // ⚙️ Configuración de body parsers
-  // ============================================================
+  // Límites de body (JSON / forms)
   app.use(json({ limit: '10mb' }));
   app.use(urlencoded({ extended: true, limit: '10mb' }));
 
-  // ============================================================
-  // 🧩 CORS (Frontend + Swagger + Postman)
-  // ============================================================
+  // CORS (permite FRONTEND y Swagger UI)
   const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
-  const swaggerOrigin = 'http://localhost:4000';
+  const swaggerOrigin = 'http://localhost:4000'; // UI que sirve Nest
 
   app.enableCors({
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true); // Permite llamadas sin origen (CLI, Postman)
+    origin: (origin, cb) => {
+      // Permite llamadas de tu front, Swagger UI local y herramientas sin origin (curl/Postman)
+      if (!origin) return cb(null, true);
       if (
         origin === FRONTEND_URL ||
         origin === swaggerOrigin ||
         /^http:\/\/localhost:\d+$/i.test(origin)
       ) {
-        return callback(null, true);
+        return cb(null, true);
       }
-      console.warn(`🚫 Bloqueado por CORS: ${origin}`);
-      return callback(new Error('CORS bloqueado'), false);
+      return cb(null, false);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -65,9 +57,7 @@ async function bootstrap() {
     exposedHeaders: ['ETag'],
   });
 
-  // ============================================================
-  // 🛡️ Validación global
-  // ============================================================
+  // Validación global
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -77,72 +67,62 @@ async function bootstrap() {
     }),
   );
 
-  // ============================================================
-  // 🚨 Filtro global de excepciones
-  // ============================================================
+  // Filtro global de excepciones
   app.useGlobalFilters(new HttpExceptionFilter());
 
-  // ============================================================
-  // 🧱 Proxy/CDN opcional (si está detrás de un reverse proxy)
-  // ============================================================
+  // Proxy/CDN opcional
   if (process.env.TRUST_PROXY === '1') {
     app.set('trust proxy', 1);
   }
 
-  // ============================================================
-  // 📘 Swagger (con JWT Bearer y persistencia del token)
-  // ============================================================
+  // ───────────────────────────────
+  // Swagger (con Bearer y persistAuth)
+  // ───────────────────────────────
   const swaggerConfig = new DocumentBuilder()
     .setTitle('FUNDECODES API')
-    .setDescription(
-      'API pública y de administración del sistema FUNDECODES. Incluye módulos administrativos, reportes, documentos y autenticación.',
-    )
+    .setDescription('API pública y de administración de FUNDECODES')
     .setVersion('1.0')
+    // Importante: el nombre 'bearer' debe coincidir con @ApiBearerAuth('bearer') en tus controladores
     .addBearerAuth(
       {
         type: 'http',
         scheme: 'bearer',
         bearerFormat: 'JWT',
         name: 'Authorization',
-        description:
-          'Ingresa tu token JWT (puedes incluir o no el prefijo "Bearer ").',
+        description: 'Pega tu token JWT (con o sin el prefijo "Bearer ").',
         in: 'header',
       },
-      'bearer', // 👈 nombre de referencia usado en @ApiBearerAuth('bearer')
+      'bearer',
     )
-    .addServer('http://localhost:4000/api') // apunta correctamente al prefijo global
+    // 👇 Apunta al server con el prefijo global
+    .addServer('http://localhost:4000/api')
     .build();
 
+  // 👇 Evita que Swagger duplique el prefijo (/api/api/...)
   const swaggerDoc = SwaggerModule.createDocument(app, swaggerConfig, {
-    ignoreGlobalPrefix: true, // evita /api/api duplicado
+    ignoreGlobalPrefix: true,
   });
 
   SwaggerModule.setup('docs', app, swaggerDoc, {
     swaggerOptions: {
-      persistAuthorization: true, // conserva el token al recargar
+      persistAuthorization: true, // mantiene el token entre recargas
       displayRequestDuration: true,
       tryItOutEnabled: true,
     },
     customSiteTitle: 'FUNDECODES API Docs',
   });
 
-  // ============================================================
-  // 🧩 Prisma: cierre limpio
-  // ============================================================
+  // Prisma: cierre limpio
   const prisma = app.get(PrismaService);
   await prisma.enableShutdownHooks(app);
 
-  // ============================================================
-  // 🚀 Inicialización del servidor
-  // ============================================================
+  // Arranque
   const port = Number(process.env.PORT ?? 4000);
   await app.listen(port);
 
-  console.log('============================================================');
-  console.log(`🚀 API corriendo en:       http://localhost:${port}/api`);
-  console.log(`📘 Documentación Swagger:  http://localhost:${port}/docs`);
-  console.log(`🌍 CORS habilitado para:   ${FRONTEND_URL}`);
-  console.log('============================================================');
+  console.log(
+    `🚀 API running on http://localhost:${port}/api | Swagger: http://localhost:${port}/docs`,
+  );
 }
 
 bootstrap();

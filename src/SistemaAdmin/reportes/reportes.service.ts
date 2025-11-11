@@ -4,17 +4,10 @@ import { FiltroInformeDto, TipoPeriodo } from './dto/filtro-informe.dto';
 import PDFDocument = require('pdfkit');
 import * as ExcelJS from 'exceljs';
 import { Buffer } from 'buffer';
-import { StorageService } from 'src/common/services/storage.service';
-import { AuditService } from 'src/common/services/audit.service';
 
 @Injectable()
 export class ReportesService {
- constructor(
-  private prisma: PrismaService,
-  private storage: StorageService,
-  private audit: AuditService,
-) {}
-
+  constructor(private prisma: PrismaService) {}
 
   async generarInforme(filtros: FiltroInformeDto) {
     const { periodo, anio, fechaInicio, fechaFin, tipoReporte, modulos } = filtros;
@@ -61,248 +54,28 @@ export class ReportesService {
     };
   }
 
-  /**
- * 📦 Obtiene los registros de un módulo según el rango de fechas
- */
-private async obtenerDatosModulo(modulo: string, start: Date, end: Date) {
-  const key = modulo.toLowerCase().trim();
-
-  try {
-    if (['project', 'projects'].includes(key)) {
-      return this.prisma.project.findMany({
-        where: { createdAt: { gte: start, lte: end } },
-      });
-    }
-
-    if (['billing', 'facturacion'].includes(key)) {
-      return this.prisma.billingRequest.findMany({
-        where: { createdAt: { gte: start, lte: end } },
-      });
-    }
-
-    if (['solicitud', 'solicitudes'].includes(key)) {
-      return this.prisma.solicitudCompra.findMany({
-        where: { createdAt: { gte: start, lte: end } },
-      });
-    }
-
-    if (['collaborator', 'collaborators', 'colaborador', 'colaboradores'].includes(key)) {
-      return this.prisma.collaborator.findMany({
-        where: { createdAt: { gte: start, lte: end } },
-      });
-    }
-
-    if (['volunteer', 'volunteers', 'voluntario', 'voluntarios'].includes(key)) {
-      const repo: any =
-        (this.prisma as any).volunteer ?? (this.prisma as any).voluntario;
-      if (!repo) return [];
-      return repo.findMany({
-        where: { createdAt: { gte: start, lte: end } },
-      });
-    }
-
-    return [];
-  } catch (error) {
-    console.error(`❌ Error obteniendo datos del módulo "${modulo}":`, error);
-    return [];
-  }
-}
-
-
-
-// ============================================================
-// ✅ MÉTODO CORREGIDO: guardar reporte y auditar
-// ============================================================
-async guardarReporteYAuditar(
-  formato: 'pdf' | 'excel',
-  buffer: Buffer,
-  userId: number,
-  parametros?: any,
-  projectId?: number, // 👈 lo hacemos opcional, no obligatorio
-) {
-  try {
-    const nombreArchivo = `informe-${new Date()
-      .toISOString()
-      .replace(/[:.]/g, '-')}.${formato}`;
-
-    // === 1️⃣ Guardar el archivo físico ===
-    const saved = await this.storage.saveFile(buffer, nombreArchivo);
-
-    // === 2️⃣ Preparar datos del registro ===
-    const data: any = {
-      filename: nombreArchivo,
-      url: saved.url,
-      mime: saved.mime,
-      bytes: saved.bytes,
-      uploadedAt: new Date(),
-    };
-
-    // === 3️⃣ Asociar un proyecto si existe ===
-    if (projectId) {
-      data.project = { connect: { id: projectId } };
-    }
-
-    // === 4️⃣ Guardar en base de datos ===
-    const reporte = await this.prisma.receipt.create({ data });
-
-    // === 5️⃣ Registrar acción de auditoría ===
-    await this.audit.registrarAccion({
-      userId,
-      accion: `GENERAR_INFORME_${formato.toUpperCase()}`,
-      detalle: `Archivo guardado: ${nombreArchivo}`,
-    });
-
-    // === 6️⃣ Retornar resultado ===
-    return { ok: true, reporte };
-  } catch (err: unknown) {
-  const error = err as Error;
-  console.error('❌ ERROR EN guardarReporteYAuditar:');
-  console.error('Mensaje:', error.message);
-  console.error('Stack:', error.stack);
-  console.error('Detalles completos:', err);
-
-  throw new Error(`No se pudo generar y guardar el informe: ${error.message}`);
-}
-
-}
-
-
-
-
-// ============================================
-// === NUEVO MÉTODO: generar, guardar y auditar ===
-// ============================================
-async generarGuardarAuditar(
-  formato: 'pdf' | 'excel',
-  informeData: any,
-  userId: number,
-  projectId?: number,
-): Promise<{
-  ok: boolean;
-  buffer: Buffer;
-  filename: string;
-  reporte: any;
-}> {
-  try {
-    console.log('🟡 [1] Iniciando generación del informe');
-
-    // === 1️⃣ Generar archivo en memoria ===
-    let buffer: Buffer;
-    let mime: string;
-    let extension: string;
-
-    if (formato === 'pdf') {
-      console.log('📄 Generando PDF...');
-      buffer = await this.generarPdf(informeData);
-      mime = 'application/pdf';
-      extension = 'pdf';
-    } else {
-      console.log('📊 Generando Excel...');
-      buffer = await this.generarExcel(informeData);
-      mime =
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-      extension = 'xlsx';
-    }
-
-    console.log('✅ Archivo generado en memoria');
-
-    // === 2️⃣ Guardar en almacenamiento ===
-    const nombreArchivo = `informe-fundecodes-${new Date()
-      .toISOString()
-      .replace(/[:.]/g, '-')}.${extension}`;
-
-    console.log('🟢 Guardando archivo:', nombreArchivo);
-    const saved = await this.storage.saveFile(buffer, nombreArchivo);
-    console.log('✅ Archivo guardado:', saved);
-
-    // === 3️⃣ Registrar en la base de datos ===
-    console.log('🟢 Registrando en la base de datos...');
-
-    const data: any = {
-      filename: saved.filename,
-      url: saved.url,
-      mime: saved.mime || mime,
-      bytes: saved.bytes,
-      uploadedAt: new Date(),
-      updatedAt: new Date(),
-    };
-
-    // === 3.1️⃣ Verificar usuario y conectar ===
-    let usuario: { name?: string | null; email?: string | null } | null = null;
-
-    if (userId && !isNaN(userId)) {
-      const usuarioExiste = await this.prisma.user.findUnique({
-        where: { id: userId },
-        select: { id: true, name: true, email: true },
-      });
-
-      if (usuarioExiste) {
-        data.user = { connect: { id: userId } };
-        usuario = usuarioExiste;
-        const nombreVisible =
-          usuario.name && usuario.name.trim() !== ''
-            ? usuario.name
-            : usuario.email;
-        console.log(`👤 Asociado al usuario: ${nombreVisible || 'Desconocido'}`);
-      } else {
-        console.warn(`⚠️ Usuario con id=${userId} no existe, se omite asignación.`);
+  private async obtenerDatosModulo(modulo: string, start: Date, end: Date) {
+    const key = modulo.toLowerCase().trim();
+    try {
+      if (['project', 'projects'].includes(key))
+        return this.prisma.project.findMany({ where: { createdAt: { gte: start, lte: end } } });
+      if (['billing', 'facturacion'].includes(key))
+        return this.prisma.billingRequest.findMany({ where: { createdAt: { gte: start, lte: end } } });
+      if (['solicitud', 'solicitudes'].includes(key))
+        return this.prisma.solicitudCompra.findMany({ where: { createdAt: { gte: start, lte: end } } });
+      if (['collaborator', 'collaborators', 'colaborador', 'colaboradores'].includes(key))
+        return this.prisma.collaborator.findMany({ where: { createdAt: { gte: start, lte: end } } });
+      if (['volunteer', 'volunteers', 'voluntario', 'voluntarios'].includes(key)) {
+        const repo: any = (this.prisma as any).volunteer ?? (this.prisma as any).voluntario;
+        if (!repo) return [];
+        return repo.findMany({ where: { createdAt: { gte: start, lte: end } } });
       }
-    } else {
-      console.warn('⚠️ userId inválido o ausente, se omite asociación de usuario.');
+      return [];
+    } catch (err) {
+      console.error(`❌ Error obteniendo datos del módulo "${modulo}":`, err);
+      return [];
     }
-
-    // === 3.2️⃣ Verificar proyecto y conectar ===
-    if (projectId && !isNaN(projectId)) {
-      const proyectoExiste = await this.prisma.project.findUnique({
-        where: { id: projectId },
-        select: { id: true },
-      });
-
-      if (proyectoExiste) {
-        data.project = { connect: { id: projectId } };
-        console.log(`📁 Asociado al proyecto ID: ${projectId}`);
-      } else {
-        console.warn(`⚠️ Proyecto con id=${projectId} no existe, se omite asignación.`);
-      }
-    }
-
-    // === 3.3️⃣ Crear registro en Receipt ===
-    const reporte = await this.prisma.receipt.create({ data });
-    console.log('✅ Registro creado en Receipt:', reporte);
-
-    // === 4️⃣ Registrar acción en auditoría ===
-    console.log('🟢 Registrando auditoría...');
-    await this.audit.registrarAccion({
-      userId,
-      accion: `GENERAR_INFORME_${formato.toUpperCase()}`,
-      detalle: `Archivo generado: ${nombreArchivo}`,
-    });
-
-    console.log('✅ Auditoría registrada');
-
-    // === 5️⃣ Enriquecer datos para PDF con usuario/fecha ===
-    const informeConUsuario = {
-      ...informeData,
-      generadoPor: usuario?.name || usuario?.email || 'Usuario desconocido',
-      fechaGeneracion: new Date(),
-    };
-
-    // Si el formato es PDF, regenerar con los datos del usuario
-    if (formato === 'pdf') {
-      buffer = await this.generarPdf(informeConUsuario);
-      console.log('📄 PDF regenerado con información del usuario.');
-    }
-
-    console.log('✅ Informe generado, guardado y auditado correctamente.');
-    return { ok: true, buffer, filename: nombreArchivo, reporte };
-  } catch (err: any) {
-    console.error('❌ ERROR DETECTADO EN generarGuardarAuditar:', err);
-    throw new Error('No se pudo generar y guardar el informe.');
   }
-}
-
-
-
 
   private agruparPorPeriodo(data: any[], tipoReporte: string) {
     const grupos: Record<string, number> = {};
