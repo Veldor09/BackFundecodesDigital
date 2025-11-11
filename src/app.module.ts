@@ -4,9 +4,10 @@ import { CacheModule } from '@nestjs/cache-manager';
 import { ConfigModule } from '@nestjs/config';
 import Joi from 'joi';
 
+// Prisma (ORM principal)
 import { PrismaModule } from './prisma/prisma.module';
 
-// Sistema Admin
+// Sistema Administrativo (Backoffice)
 import { ProjectsModule } from './SistemaAdmin/projects/projects.module';
 import { DashboardModule } from './SistemaAdmin/dashboard/dashboard.module';
 import { FilesModule } from './SistemaAdmin/files/files.module';
@@ -18,42 +19,54 @@ import { SancionesModule } from './SistemaAdmin/sanciones/sanciones.module';
 import { SolicitudesModule } from './SistemaAdmin/solicitudes/solicitudes.module';
 import { ContabilidadModule } from './SistemaAdmin/contabilidad/contabilidad.module';
 import { BillingModule } from './SistemaAdmin/billing/billing.module';
-import { ReportesModule } from './SistemaAdmin/reportes/reportes.module'; // ✅ Nuevo módulo de reportes
+import { ReportesModule } from './SistemaAdmin/reportes/reportes.module'; // ✅ Nuevo módulo
 
-// Público
+// Público (Página informativa)
 import { NewsModule } from './news/news.module';
 import { ContactModule } from './PaginaInfo/contact/contact.module';
 import { VolunteersFormModule } from './PaginaInfo/volunteers/volunteer-form.module';
 import { InformationalPageModule } from './PaginaInfo/informational-page.module';
+import { CommentsModule } from './PaginaInfo/comments/comments.module';
 
-// Auth
+// Autenticación
 import { AuthModule } from './auth/auth.module';
 
 // Comunes
 import { CommonModule } from './common/common.module';
 
+// Servicios globales de apoyo (almacenamiento y auditoría)
+import { AuditService } from './common/services/audit.service';
+import { StorageService } from './common/services/storage.service';
+
 @Module({
   imports: [
+    // ================================
+    // 🌐 Configuración Global
+    // ================================
     ConfigModule.forRoot({
       isGlobal: true,
       validationSchema: Joi.object({
         // --- APP ---
-        NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
+        NODE_ENV: Joi.string()
+          .valid('development', 'production', 'test')
+          .default('development'),
         PORT: Joi.number().default(4000),
 
         // --- DB ---
         DATABASE_URL: Joi.string().uri().required(),
 
-        // --- FRONT (links de set-password) ---
+        // --- FRONT ---
         FRONTEND_URL: Joi.string().uri().required(),
         FRONTEND_SET_PASSWORD_PATH: Joi.string().default('/set-password'),
 
         // --- JWTs ---
         PASSWORD_JWT_SECRET: Joi.string().min(16).required(),
-        PASSWORD_JWT_EXPIRES: Joi.alternatives().try(Joi.number(), Joi.string()).default('30m'),
+        PASSWORD_JWT_EXPIRES: Joi.alternatives()
+          .try(Joi.number(), Joi.string())
+          .default('30m'),
         JWT_SECRET: Joi.string().default('dev-secret'),
 
-        // --- Email (MailerSend SMTP) ---
+        // --- Email ---
         MAIL_HOST: Joi.string().default('smtp.mailersend.net'),
         MAIL_PORT: Joi.number().default(587),
         MAIL_USERNAME: Joi.string().allow('').default(''),
@@ -61,7 +74,7 @@ import { CommonModule } from './common/common.module';
         MAIL_FROM: Joi.string().default('Fundecodes <no-reply@test.mlsender.net>'),
         SEND_EMAILS: Joi.string().valid('true', 'false').default('true'),
 
-        // --- (Legacy) SENDGRID opcional ---
+        // --- SendGrid opcional ---
         SENDGRID_API_KEY: Joi.string().optional(),
 
         // --- Otros ---
@@ -69,15 +82,23 @@ import { CommonModule } from './common/common.module';
       }),
     }),
 
+    // ================================
+    // ⚡ Cache Global
+    // ================================
     CacheModule.register({
       isGlobal: true,
       ttl: 60_000,
       max: 500,
     }),
 
+    // ================================
+    // 🗄️ ORM / Base de Datos
+    // ================================
     PrismaModule,
 
-    // Sistema Admin
+    // ================================
+    // 🧭 Sistema Administrativo
+    // ================================
     ProjectsModule,
     DashboardModule,
     FilesModule,
@@ -89,19 +110,31 @@ import { CommonModule } from './common/common.module';
     SolicitudesModule,
     ContabilidadModule,
     BillingModule,
-    ReportesModule, // ✅ añadido aquí
+    ReportesModule, // ✅ Nuevo módulo de reportes conectado
 
-    // Público
+    // ================================
+    // 🌍 Público (Página informativa)
+    // ================================
     NewsModule,
     ContactModule,
     VolunteersFormModule,
     InformationalPageModule,
+    CommentsModule,
 
-    // Auth
+    // ================================
+    // 🔐 Autenticación
+    // ================================
     AuthModule,
 
-    // Comunes
+    // ================================
+    // ⚙️ Módulos Comunes
+    // ================================
     CommonModule,
   ],
+
+  // ================================
+  // 🧩 Providers Globales
+  // ================================
+  providers: [AuditService, StorageService],
 })
 export class AppModule {}

@@ -1,5 +1,4 @@
 // src/SistemaAdmin/projects/projects.controller.ts
-
 import {
   Controller,
   Get,
@@ -15,6 +14,7 @@ import {
   UseInterceptors,
   BadRequestException,
   DefaultValuePipe,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBody,
@@ -22,6 +22,7 @@ import {
   ApiParam,
   ApiQuery,
   ApiTags,
+  ApiBearerAuth,
 } from '@nestjs/swagger';
 import { Response } from 'express';
 import { ProjectsService } from './projects.service';
@@ -35,6 +36,12 @@ import { diskStorage } from 'multer';
 import { extname, join } from 'path';
 import * as fs from 'fs';
 
+// ⬇️ Guards y permisos
+import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import { Permissions } from '../../common/decorators/permissions.decorator';
+import { Public } from '../../common/decorators/public.decorator'; // ✅ añadido
+
 // Helper para normalizar enlaces de Google Drive
 function normalizeDriveUrl(url: string): string {
   const m = url?.match(/\/file\/d\/([^/]+)\//);
@@ -43,6 +50,9 @@ function normalizeDriveUrl(url: string): string {
 }
 
 @ApiTags('projects')
+@ApiBearerAuth('bearer')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@Permissions('projects:access')
 @Controller('projects')
 export class ProjectsController {
   constructor(private readonly service: ProjectsService) {}
@@ -55,55 +65,57 @@ export class ProjectsController {
       'Incluye asignaciones (voluntarios) solo cuando se pida. Valores: 1/true | 0/false',
     schema: { type: 'string', enum: ['0', '1', 'true', 'false'] },
   })
+  @Public() // ✅ permite a la landing listar proyectos sin token
   @Get()
   list(@Query() query: ListProjectsQuery) {
     return this.service.list(query);
   }
 
- // -------------------- DETALLE con caché HTTP + ETag --------------------
-@ApiQuery({
-  name: 'ttl',
-  required: false,
-  description:
-    'Tiempo de cacheo en segundos (Cache-Control: public, max-age=ttl). Default 60.',
-  schema: { type: 'integer', default: 60, minimum: 0 },
-})
-@ApiQuery({
-  name: 'includeVols',
-  required: false,
-  description:
-    'Incluye asignaciones (voluntarios) solo cuando se pida. Valores: 1/true | 0/false',
-  schema: { type: 'string', enum: ['0', '1', 'true', 'false'] },
-})
-@Get(':idOrSlug')
-async get(
-  @Param('idOrSlug') idOrSlug: string,
-  @Query('ttl', new DefaultValuePipe('60')) ttl: string,
-  @Query('includeVols') includeVols: string | undefined, // <— SIN "?"
-  @Res() res: Response,
-) {
-  const data = await this.service.findOne(
-    idOrSlug,
-    includeVols === '1' || includeVols === 'true',
-  );
+  // -------------------- DETALLE con caché HTTP + ETag --------------------
+  @ApiQuery({
+    name: 'ttl',
+    required: false,
+    description:
+      'Tiempo de cacheo en segundos (Cache-Control: public, max-age=ttl). Default 60.',
+    schema: { type: 'integer', default: 60, minimum: 0 },
+  })
+  @ApiQuery({
+    name: 'includeVols',
+    required: false,
+    description:
+      'Incluye asignaciones (voluntarios) solo cuando se pida. Valores: 1/true | 0/false',
+    schema: { type: 'string', enum: ['0', '1', 'true', 'false'] },
+  })
+  @Public() // ✅ detalle de proyecto también público
+  @Get(':idOrSlug')
+  async get(
+    @Param('idOrSlug') idOrSlug: string,
+    @Query('ttl', new DefaultValuePipe('60')) ttl: string,
+    @Query('includeVols') includeVols: string | undefined,
+    @Res() res: Response,
+  ) {
+    const data = await this.service.findOne(
+      idOrSlug,
+      includeVols === '1' || includeVols === 'true',
+    );
 
-  const seconds = Math.max(0, Number.isFinite(+ttl) ? +ttl : 60);
-  res.setHeader(
-    'Cache-Control',
-    `public, max-age=${seconds}, stale-while-revalidate=120`,
-  );
+    const seconds = Math.max(0, Number.isFinite(+ttl) ? +ttl : 60);
+    res.setHeader(
+      'Cache-Control',
+      `public, max-age=${seconds}, stale-while-revalidate=120`,
+    );
 
-  const etagBase = (data as any).updatedAt
-    ? new Date((data as any).updatedAt).toISOString()
-    : '';
-  const etag = `"proj-${(data as any).id}-${etagBase}"`;
-  res.setHeader('ETag', etag);
+    const etagBase = (data as any).updatedAt
+      ? new Date((data as any).updatedAt).toISOString()
+      : '';
+    const etag = `"proj-${(data as any).id}-${etagBase}"`;
+    res.setHeader('ETag', etag);
 
-  const inm = res.req.headers['if-none-match'];
-  if (inm && inm === etag) return res.status(304).send();
+    const inm = res.req.headers['if-none-match'];
+    if (inm && inm === etag) return res.status(304).send();
 
-  return res.status(200).json(data);
-}
+    return res.status(200).json(data);
+  }
 
   // -------------------- CREAR --------------------
   @Post()
@@ -124,11 +136,6 @@ async get(
   }
 
   // ===================== ASIGNACIONES =====================
-
-  /**
-   * Asignar voluntario a proyecto
-   * POST /projects/:id/volunteers/:voluntarioId
-   */
   @Post(':id/volunteers/:voluntarioId')
   assignVolunteer(
     @Param('id', ParseIntPipe) id: number,
@@ -137,10 +144,6 @@ async get(
     return this.service.assignVolunteer(id, voluntarioId);
   }
 
-  /**
-   * Quitar voluntario de proyecto
-   * DELETE /projects/:id/volunteers/:voluntarioId
-   */
   @Delete(':id/volunteers/:voluntarioId')
   unassignVolunteer(
     @Param('id', ParseIntPipe) id: number,
@@ -174,93 +177,32 @@ async get(
     });
   }
 
-  // ===================== DOCUMENTOS: ENDPOINTS =====================
-
-  /**
-   * LISTAR documentos de un proyecto
-   * GET /projects/:id/documents
-   */
+  // ===================== DOCUMENTOS =====================
   @Get(':id/documents')
   async getProjectDocuments(@Param('id', ParseIntPipe) id: number) {
     return this.service.getProjectDocuments(id);
   }
 
-  /**
-   * SUBIR documento (archivo local)
-   * POST /projects/:id/documents
-   */
-  @Post(':id/documents')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: diskStorage({
-        destination: (req, file, cb) => {
-          const dest = join(process.cwd(), 'uploads', 'projects', 'docs');
-          fs.mkdirSync(dest, { recursive: true });
-          cb(null, dest);
-        },
-        filename: (req, file, cb) => {
-          const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-          cb(null, unique + extname(file.originalname));
-        },
-      }),
-      limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
-      fileFilter: (req, file, cb) => {
-        const allowed = [
-          '.pdf',
-          '.doc',
-          '.docx',
-          '.txt',
-          '.jpg',
-          '.jpeg',
-          '.png',
-          '.gif',
-        ];
-        const ext = extname(file.originalname).toLowerCase();
-        if (!allowed.includes(ext)) {
-          return cb(
-            new BadRequestException('Tipo de archivo no permitido'),
-            false,
-          );
-        }
-        cb(null, true);
-      },
-    }),
-  )
-  @ApiConsumes('multipart/form-data')
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        file: { type: 'string', format: 'binary' },
-      },
-      required: ['file'],
-    },
-  })
-  async uploadProjectDocument(
-    @Param('id', ParseIntPipe) id: number,
-    @UploadedFile() file: Express.Multer.File,
-  ) {
-    if (!file) throw new BadRequestException('Archivo requerido (file)');
-    return this.service.uploadProjectDocument(id, file);
-  }
+@Post(':id/documents')
+@UseInterceptors(FileInterceptor('file'))
+@ApiConsumes('multipart/form-data')
+@ApiBody({
+  schema: {
+    type: 'object',
+    properties: { file: { type: 'string', format: 'binary' } },
+    required: ['file'],
+  },
+})
+async uploadProjectDocument(
+  @Param('id', ParseIntPipe) id: number,
+  @UploadedFile() file: Express.Multer.File,
+) {
+  if (!file) throw new BadRequestException('Archivo requerido (file)');
+  return this.service.uploadProjectDocument(id, file);
+}
 
-  /**
-   * ELIMINAR documento de un proyecto (✅ por ID — recomendado)
-   * DELETE /projects/:id/documents/:documentId
-   */
+
   @Delete(':id/documents/:documentId')
-  @ApiParam({
-    name: 'id',
-    type: Number,
-    required: true,
-    description: 'ID del proyecto',
-  })
-  @ApiParam({
-    name: 'documentId',
-    type: Number,
-    required: true,
-    description: 'ID del documento',
-  })
   async deleteProjectDocumentById(
     @Param('id', ParseIntPipe) id: number,
     @Param('documentId', ParseIntPipe) documentId: number,
@@ -268,18 +210,7 @@ async get(
     return this.service.removeDocumentById(id, documentId);
   }
 
-  /**
-   * ELIMINAR documento de un proyecto (compat: por nombre/URL)
-   * DELETE /projects/:id/documents?name=<encoded>
-   * ó enviar body { "url": "..." } (se extrae el nombre)
-   */
   @Delete(':id/documents')
-  @ApiQuery({
-    name: 'name',
-    required: false,
-    description:
-      'Nombre del archivo a eliminar (URL-encoded). Alternativa: enviar body {url}.',
-  })
   async deleteProjectDocumentLegacy(
     @Param('id', ParseIntPipe) id: number,
     @Query('name') name?: string,

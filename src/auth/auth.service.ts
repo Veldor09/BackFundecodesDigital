@@ -13,24 +13,6 @@ import { EmailService } from '../common/services/email.service';
 
 const BCRYPT_COST = 12;
 
-type RoleName = 'admin' | 'editor' | 'viewer' | string;
-
-/** Mapa de roles -> permisos (ajústalo a tu gusto) */
-const ROLE_PERMS: Record<RoleName, string[]> = {
-  admin: ['users.manage', 'roles.manage', 'projects.manage', 'news.manage'],
-  editor: ['news.manage', 'projects.manage'],
-  viewer: [],
-};
-
-function aggregatePerms(roles: string[]): string[] {
-  const set = new Set<string>();
-  for (const r of roles) {
-    const perms = ROLE_PERMS[r] ?? [];
-    perms.forEach((p) => set.add(p));
-  }
-  return Array.from(set);
-}
-
 @Injectable()
 export class AuthService {
   constructor(
@@ -47,11 +29,8 @@ export class AuthService {
       where: { email },
       include: {
         roles: {
-          select: {
-            id: true,
-            userId: true,
-            roleId: true,
-            role: { select: { id: true, name: true } },
+          include: {
+            role: { include: { permissions: true } }, // ⬅️ traemos permisos desde BD
           },
         },
       },
@@ -83,16 +62,30 @@ export class AuthService {
     email: string;
     name: string | null;
     verified: boolean;
-    roles: { role: { name: string } }[];
+    roles: { role: { name: string; permissions: { key: string }[] } }[];
   }) {
-    const roles = user.roles.map((r) => r.role.name);
-    const perms = aggregatePerms(roles);
+    // Asegura datos frescos (por si el strategy no incluyó permisos)
+    const dbUser = await this.prisma.user.findUnique({
+      where: { id: user.id },
+      include: {
+        roles: { include: { role: { include: { permissions: true } } } },
+      },
+    });
+
+    if (!dbUser) {
+      throw new UnauthorizedException('Usuario no encontrado');
+    }
+
+    const roles = dbUser.roles.map((r) => r.role.name);
+    const permissions = Array.from(
+      new Set(dbUser.roles.flatMap((r) => r.role.permissions.map((p) => p.key))),
+    );
 
     const payload = {
-      sub: user.id,
-      email: user.email,
+      sub: dbUser.id,
+      email: dbUser.email,
       roles,
-      perms,
+      permissions, // ⬅️ clave estandarizada para el guard
     };
 
     const access_token = await this.jwtService.signAsync(payload);
@@ -100,13 +93,15 @@ export class AuthService {
     return {
       access_token,
       user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        verified: (user as any).verified,
-        approved: (user as any).approved ?? false,
+        id: dbUser.id,
+        email: dbUser.email,
+        name: dbUser.name,
+        verified: (dbUser as any).verified,
+        approved: (dbUser as any).approved ?? false,
         roles,
-        perms,
+        permissions,
+        // compat con front existente (si esperaba 'perms'):
+        perms: permissions,
       },
     };
   }
@@ -201,22 +196,18 @@ export class AuthService {
   }
 
   // ------------------------ RECUPERAR CONTRASEÑA ------------------------
-  /**
-   * Si el correo NO existe → lanza 400 para que el front lo muestre.
-   * Si existe → genera token de reset y envía email.
-   */
   async requestPasswordReset(email: string) {
     const user = await this.prisma.user.findUnique({
       where: { email },
       select: { id: true, email: true },
     });
 
-    // ⬇️ cambio clave: ahora SÍ avisamos cuando no existe
+    // Ahora SÍ avisamos cuando no existe
     if (!user) {
       throw new BadRequestException('El correo no está registrado');
     }
 
-    // Alineado con tu .env (usas RESET_JWT_SECRET). Dejamos ambos por compatibilidad.
+    // Alineado con tu .env
     const secret =
       this.config.get<string>('RESET_JWT_SECRET') ||
       this.config.get<string>('RESET_PASSWORD_JWT_SECRET') ||
@@ -246,9 +237,7 @@ export class AuthService {
     return { ok: true };
   }
 
-  /**
-   * Cambia la contraseña usando el token de recuperación.
-   */
+  // ------------------- RESET PASSWORD (con token) -------------------
   async resetPasswordWithToken(
     token: string,
     newPassword: string,

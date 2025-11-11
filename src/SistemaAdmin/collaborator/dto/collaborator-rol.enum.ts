@@ -1,4 +1,7 @@
 export enum CollaboratorRol {
-  ADMIN = 'ADMIN',
-  COLABORADOR = 'COLABORADOR',
+  ADMIN = 'admin',
+  COLABORADORFACTURA = 'colaboradorfactura',
+  COLABORADORVOLUNTARIADO = 'colaboradorvoluntariado',
+  COLABORADORPROYECTO = 'colaboradorproyecto',
+  COLABORADORCONTABILIDAD = 'colaboradorcontabilidad',
 }

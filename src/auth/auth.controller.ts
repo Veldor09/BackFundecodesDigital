@@ -23,11 +23,11 @@ import * as jwt from 'jsonwebtoken';
 
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
-import { SetPasswordDto } from './dto/set-password.dto'; // { token, newPassword, confirmPassword? }
+import { SetPasswordDto } from './dto/set-password.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { ConfigService } from '@nestjs/config';
 
-@ApiTags('Auth')
+@ApiTags('auth') // agrupa como "auth" en Swagger
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -35,7 +35,7 @@ export class AuthController {
     private readonly config: ConfigService,
   ) {}
 
-  // --- LOGIN ---
+  // ---------- LOGIN ----------
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Login con email y password' })
@@ -45,28 +45,22 @@ export class AuthController {
     description: 'Credenciales inválidas o cuenta no aprobada',
   })
   async login(@Body() body: LoginDto) {
-    // Normaliza el email por si el front no lo hizo
     const email = (body.email || '').trim().toLowerCase();
     const user = await this.authService.validateUser(email, body.password);
     return this.authService.login(user);
   }
 
-  // --- SET PASSWORD (token de invitación, 30 min) ---
+  // ---------- SET PASSWORD (token de invitación) ----------
   @Post('set-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Establecer contraseña con token temporal (invitación)',
     description:
-      'El usuario debe ingresar la contraseña 2 veces y coincidir. El token caduca según PASSWORD_JWT_EXPIRES (por defecto 30m).',
+      'El token se genera al invitar/crear usuario. Expira según PASSWORD_JWT_EXPIRES (por defecto 30m).',
   })
   @ApiBody({ type: SetPasswordDto })
-  @ApiOkResponse({
-    description: 'Contraseña establecida',
-    schema: { example: { ok: true } },
-  })
-  @ApiBadRequestResponse({
-    description: 'Token inválido/expirado o contraseñas no coinciden',
-  })
+  @ApiOkResponse({ description: 'Contraseña establecida', schema: { example: { ok: true } } })
+  @ApiBadRequestResponse({ description: 'Token inválido/expirado o contraseñas no coinciden' })
   async setPassword(@Body() dto: SetPasswordDto, @Req() req: Request) {
     return this.authService.setPasswordWithToken(
       dto.token,
@@ -76,13 +70,13 @@ export class AuthController {
     );
   }
 
-  // --- FORGOT PASSWORD (solicitar enlace de recuperación) ---
+  // ---------- FORGOT PASSWORD ----------
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Solicita un enlace de recuperación de contraseña',
     description:
-      'Si el correo existe, se envía un enlace temporal. La respuesta siempre es { ok: true } para evitar enumeración de usuarios.',
+      'Envía un enlace temporal si el correo existe. En tu implementación actual puede responder 400 si el correo NO existe.',
   })
   @ApiBody({
     schema: {
@@ -92,18 +86,19 @@ export class AuthController {
     },
   })
   @ApiOkResponse({ schema: { example: { ok: true } } })
+  @ApiBadRequestResponse({ description: 'El correo no está registrado' })
   async forgotPassword(@Body('email') emailRaw: string) {
     const email = (emailRaw || '').trim().toLowerCase();
     return this.authService.requestPasswordReset(email);
   }
 
-  // --- RESET PASSWORD (cambiar con token de recuperación) ---
+  // ---------- RESET PASSWORD ----------
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Cambia la contraseña usando el token de recuperación',
     description:
-      'Token con expiración limitada (RESET_PASSWORD_JWT_EXPIRES). Requiere confirmar la contraseña.',
+      'Token de recuperación con expiración limitada (RESET_JWT_EXPIRES/RESET_PASSWORD_JWT_EXPIRES).',
   })
   @ApiBody({
     schema: {
@@ -117,9 +112,7 @@ export class AuthController {
     },
   })
   @ApiOkResponse({ schema: { example: { ok: true } } })
-  @ApiBadRequestResponse({
-    description: 'Token inválido/expirado o contraseñas no coinciden',
-  })
+  @ApiBadRequestResponse({ description: 'Token inválido/expirado o contraseñas no coinciden' })
   async resetPassword(
     @Body('token') token: string,
     @Body('newPassword') newPassword: string,
@@ -134,7 +127,7 @@ export class AuthController {
     );
   }
 
-  // --- ME (inspeccionar req.user) ---
+  // ---------- ME (protegido) ----------
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('bearer')
@@ -143,14 +136,13 @@ export class AuthController {
     return { user: req.user };
   }
 
-  // --- ECHO HEADER (depuración) ---
+  // ---------- Depuración ----------
   @Get('_echo')
-  @ApiOperation({ summary: 'Echo del header Authorization (depuración sin guard)' })
+  @ApiOperation({ summary: 'Echo del header Authorization (sin guard)' })
   echo(@Req() req: Request) {
     return { authorization: req.headers['authorization'] || null };
   }
 
-  // --- VERIFY manual (depuración de tokens) ---
   @Post('_verify')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Verifica un token manualmente y muestra payload/error' })

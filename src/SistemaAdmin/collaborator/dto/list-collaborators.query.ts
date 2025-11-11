@@ -1,5 +1,5 @@
 import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { CollaboratorRol } from './collaborator-rol.enum';
 import { CollaboratorEstado } from './collaborator-estado.enum';
@@ -10,16 +10,26 @@ export class ListCollaboratorsQuery {
     example: 'admin',
   })
   @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
   @IsString({ message: 'q debe ser una cadena' })
   q?: string;
 
   @ApiPropertyOptional({
     enum: CollaboratorRol,
-    description: 'Filtrar por rol',
+    description:
+      'Filtrar por rol. Valores: admin | colaboradorfactura | colaboradorvoluntariado | colaboradorproyecto | colaboradorcontabilidad',
     example: CollaboratorRol.ADMIN,
   })
   @IsOptional()
-  @IsEnum(CollaboratorRol, { message: 'rol debe ser ADMIN o COLABORADOR' })
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.toLowerCase() : value,
+  )
+  @IsEnum(CollaboratorRol, {
+    message:
+      'rol debe ser uno de: admin, colaboradorfactura, colaboradorvoluntariado, colaboradorproyecto, colaboradorcontabilidad',
+  })
   rol?: CollaboratorRol;
 
   @ApiPropertyOptional({
@@ -28,6 +38,9 @@ export class ListCollaboratorsQuery {
     example: CollaboratorEstado.ACTIVO,
   })
   @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.toUpperCase() : value,
+  )
   @IsEnum(CollaboratorEstado, { message: 'estado debe ser ACTIVO o INACTIVO' })
   estado?: CollaboratorEstado;
 
