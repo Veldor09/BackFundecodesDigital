@@ -1,71 +1,46 @@
 // src/main.ts
 import 'reflect-metadata';
-
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { PrismaService } from './prisma/prisma.service';
-
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { json, urlencoded } from 'express';
 import { join } from 'path';
-
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
-function parseAllowedOrigins(envValue?: string): string[] {
-  if (!envValue) return [];
-  return envValue
+function parseCsv(v?: string) {
+  return (v ?? '')
     .split(',')
-    .map((s) => s.trim())
+    .map(s => s.trim())
     .filter(Boolean);
 }
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  // Todas tus rutas bajo /api
+  // Prefijo global (toda tu API vive en /api)
   app.setGlobalPrefix('api');
 
-  // Archivos estáticos (si usas /uploads)
+  // Archivos estáticos (si los usas)
   app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads/' });
 
-  // Body parsers
+  // Body size
   app.use(json({ limit: '10mb' }));
   app.use(urlencoded({ extended: true, limit: '10mb' }));
 
-  // === CORS robusto ===
-  // FRONTEND_URL: un solo origen "fijo"
+  // CORS
   const FRONTEND_URL = (process.env.FRONTEND_URL ?? 'http://localhost:3000').replace(/\/$/, '');
-
-  // ALLOWED_ORIGINS: lista separada por comas (útil para previews de Vercel, pruebas locales, etc.)
-  // Ejemplo en Render:
-  // ALLOWED_ORIGINS=https://front-fundecodes-digital-cedl.vercel.app,https://backfundecodesdigital.onrender.com,http://localhost:5173
-  const extraAllowed = parseAllowedOrigins(process.env.ALLOWED_ORIGINS);
-  const allowList = new Set<string>([FRONTEND_URL, ...extraAllowed]);
-
-  // Patrones (regex) que aceptamos además de la lista exacta:
-  // - Cualquier preview de vercel.app de tu proyecto (opcional)
-  const vercelPattern = /^https?:\/\/[a-z0-9-]+\.vercel\.app$/i;
-  // - Localhost con cualquier puerto
-  const localhostPattern = /^http:\/\/localhost:\d+$/i;
+  const EXTRA_ORIGINS = parseCsv(process.env.CORS_EXTRA_ORIGINS); // CSV opcional
+  const ALLOW_LOCALHOST = true;
 
   app.enableCors({
     origin: (origin, callback) => {
-      // Thunder Client / curl / Swagger (sin Origin): permitir
-      if (!origin) return callback(null, true);
-
-      // Coincidencia exacta con allowList
-      if (allowList.has(origin)) return callback(null, true);
-
-      // Coincidencia por patrones
-      if (localhostPattern.test(origin)) return callback(null, true);
-      if (vercelPattern.test(origin)) return callback(null, true);
-
-      // (Opcional) permite onrender.com para abrir Swagger desde el propio dominio
-      if (/\.onrender\.com$/i.test(origin)) return callback(null, true);
-
-      // Si no se permite:
+      if (!origin) return callback(null, true); // health checks / curl
+      if (origin === FRONTEND_URL) return callback(null, true);
+      if (EXTRA_ORIGINS.includes(origin)) return callback(null, true);
+      if (ALLOW_LOCALHOST && /^http:\/\/localhost:\d+$/i.test(origin)) return callback(null, true);
       return callback(new Error('CORS bloqueado'), false);
     },
     credentials: true,
@@ -80,11 +55,9 @@ async function bootstrap() {
       'Pragma',
     ],
     exposedHeaders: ['ETag'],
-    preflightContinue: false,
-    optionsSuccessStatus: 204,
   });
 
-  // Validaciones
+  // Pipes y filtros
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -93,12 +66,12 @@ async function bootstrap() {
       transformOptions: { enableImplicitConversion: true },
     }),
   );
-
-  // Filtro global de errores
   app.useGlobalFilters(new HttpExceptionFilter());
 
-  // Proxy (Render)
-  if (process.env.TRUST_PROXY === '1') app.set('trust proxy', 1);
+  // Trust proxy (Render/NGINX)
+  if (process.env.TRUST_PROXY === '1' || process.env.RENDER) {
+    app.set('trust proxy', 1);
+  }
 
   // Swagger
   const publicServer = process.env.PUBLIC_API_URL || 'http://localhost:4000/api';
@@ -128,7 +101,14 @@ async function bootstrap() {
     customSiteTitle: 'FUNDECODES API Docs',
   });
 
-  // Prisma shutdown hooks
+  // Handlers mínimos para `/` (GET/HEAD) => evitan 404 en Render
+  const http = app.getHttpAdapter();
+  http.get('/', (_req: any, res: any) => {
+    res.status(200).json({ ok: true, name: 'BackFundecodesDigital', docs: '/docs', api: '/api' });
+  });
+  http.head('/', (_req: any, res: any) => res.status(200).end());
+
+  // Prisma
   const prisma = app.get(PrismaService);
   await prisma.enableShutdownHooks(app);
 
@@ -139,7 +119,7 @@ async function bootstrap() {
   console.log(`🚀 API:      http://localhost:${port}/api`);
   console.log(`📘 Swagger:  http://localhost:${port}/docs`);
   console.log(`🌍 CORS base: ${FRONTEND_URL}`);
-  console.log(`🌍 Extra:    ${[...allowList].join(', ')}`);
+  if (EXTRA_ORIGINS.length) console.log(`🌍 Extra:    ${EXTRA_ORIGINS.join(', ')}`);
   console.log('============================================================');
 }
 
