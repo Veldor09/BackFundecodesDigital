@@ -1,17 +1,21 @@
-import { Controller, Get } from '@nestjs/common';
+// src/app.controller.ts
+import { Controller, Get, Head } from '@nestjs/common';
 import { AppService } from './app.service';
 
 @Controller()
 export class AppController {
   constructor(private readonly appService: AppService) {}
 
-  // GET /
   @Get()
-  getHello(): string {
-    return this.appService.getHello();
+  getRoot() {
+    return { ok: true, name: 'BackFundecodesDigital', docs: '/docs', api: '/api' };
   }
 
-  // GET /health  ← la que usará Render para el health check
+  @Head()
+  headRoot() {
+    // Responde 200 vacío para HEAD /
+  }
+
   @Get('health')
   health() {
     return {
