@@ -45,19 +45,27 @@ import { AppService } from './app.service';
         NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
         PORT: Joi.number().default(4000),
 
-        // --- DB ---
-        DATABASE_URL: Joi.string().uri().required(),
+        // --- DB (aceptar postgres/postgresql y validar ambas) ---
+        DATABASE_URL: Joi.string()
+          .uri({ scheme: ['postgres', 'postgresql'] })
+          .required(),
+        DIRECT_URL: Joi.string()
+          .uri({ scheme: ['postgres', 'postgresql'] })
+          .required(),
 
-        // --- FRONT (links de set-password) ---
-        FRONTEND_URL: Joi.string().uri().required(),
+        // --- FRONT (permitir http/https) ---
+        FRONTEND_URL: Joi.string().uri({ scheme: ['http', 'https'] }).required(),
         FRONTEND_SET_PASSWORD_PATH: Joi.string().default('/set-password'),
+        FRONTEND_RESET_PASSWORD_PATH: Joi.string().default('/reset-password'),
 
         // --- JWTs ---
         PASSWORD_JWT_SECRET: Joi.string().min(16).required(),
         PASSWORD_JWT_EXPIRES: Joi.alternatives().try(Joi.number(), Joi.string()).default('30m'),
         JWT_SECRET: Joi.string().default('dev-secret'),
+        RESET_JWT_SECRET: Joi.string().min(16).required(),
+        RESET_JWT_EXPIRES: Joi.alternatives().try(Joi.number(), Joi.string()).default('30m'),
 
-        // --- Email (MailerSend SMTP) ---
+        // --- Email ---
         MAIL_HOST: Joi.string().default('smtp.mailersend.net'),
         MAIL_PORT: Joi.number().default(587),
         MAIL_USERNAME: Joi.string().allow('').default(''),
@@ -65,19 +73,12 @@ import { AppService } from './app.service';
         MAIL_FROM: Joi.string().default('Fundecodes <no-reply@test.mlsender.net>'),
         SEND_EMAILS: Joi.string().valid('true', 'false').default('true'),
 
-        // --- (Legacy) SENDGRID opcional ---
-        SENDGRID_API_KEY: Joi.string().optional(),
-
         // --- Otros ---
         TRUST_PROXY: Joi.string().valid('0', '1').default('0'),
       }),
     }),
 
-    CacheModule.register({
-      isGlobal: true,
-      ttl: 60_000,
-      max: 500,
-    }),
+    CacheModule.register({isGlobal: true, ttl: 60_000, max: 500,}),
 
     PrismaModule,
 
