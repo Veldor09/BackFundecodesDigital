@@ -22,6 +22,10 @@ export class EmailService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
   ) {
+    // === Flags de envío real (dev/testing/prod) — definir ANTES del verify() ===
+    const sendEmailsEnv = (this.config.get<string>('SEND_EMAILS') ?? 'true').toLowerCase();
+    this.sendEmails = sendEmailsEnv !== 'false';
+
     // === SMTP config desde .env ===
     const host = this.config.get<string>('MAIL_HOST') || 'smtp.gmail.com';
     const port = Number(this.config.get<string>('MAIL_PORT') || '587');
@@ -44,7 +48,7 @@ export class EmailService {
     this.transporter = nodemailer.createTransport({
       host,
       port,
-      secure,               // 465:true (SSL), 587:false (STARTTLS)
+      secure, // 465:true (SSL), 587:false (STARTTLS)
       auth: user && pass ? { user, pass } : undefined,
 
       // Estabilidad
@@ -68,16 +72,17 @@ export class EmailService {
       debug: mailDebug,
     });
 
-    this.transporter
-      .verify()
-      .then(() => this.logger.log('[SMTP] Conexión OK'))
-      .catch((e) =>
-        this.logger.warn(`[SMTP] No se pudo verificar la conexión: ${e?.message || e}`),
-      );
-
-    // Control de envíos reales (dev/testing)
-    const sendEmailsEnv = (this.config.get<string>('SEND_EMAILS') ?? 'true').toLowerCase();
-    this.sendEmails = sendEmailsEnv !== 'false';
+    // ✅ Solo verificamos conexión si realmente se enviarán correos
+    if (this.sendEmails) {
+      this.transporter
+        .verify()
+        .then(() => this.logger.log('[SMTP] Conexión OK'))
+        .catch((e) =>
+          this.logger.warn(`[SMTP] No se pudo verificar la conexión: ${e?.message || e}`),
+        );
+    } else {
+      this.logger.warn('[DEV-EMAIL OFF] Envío de correos deshabilitado por SEND_EMAILS=false');
+    }
 
     // Remitente (ideal: mismo MAIL_USERNAME)
     this.from =

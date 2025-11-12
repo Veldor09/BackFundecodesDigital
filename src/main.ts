@@ -3,7 +3,7 @@ import 'reflect-metadata';
 
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, RequestMethod } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { PrismaService } from './prisma/prisma.service';
 
@@ -16,15 +16,23 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  app.setGlobalPrefix('api');
+  // 🔹 Prefijo global para API, pero excluye "/" (GET y HEAD) para que no dé 404
+  app.setGlobalPrefix('api', {
+    exclude: [
+      { path: '/', method: RequestMethod.GET },
+      { path: '/', method: RequestMethod.HEAD },
+    ],
+  });
 
+  // Archivos estáticos
   app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads/' });
 
+  // Body parsers
   app.use(json({ limit: '10mb' }));
   app.use(urlencoded({ extended: true, limit: '10mb' }));
 
+  // CORS
   const FRONTEND_URL = (process.env.FRONTEND_URL ?? 'http://localhost:3000').replace(/\/$/, '');
-
   app.enableCors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
@@ -32,7 +40,7 @@ async function bootstrap() {
       return callback(new Error('CORS bloqueado'), false);
     },
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'], // ← añade HEAD
     allowedHeaders: [
       'Origin',
       'X-Requested-With',
@@ -45,6 +53,7 @@ async function bootstrap() {
     exposedHeaders: ['ETag'],
   });
 
+  // Pipes y filtros globales
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -53,18 +62,17 @@ async function bootstrap() {
       transformOptions: { enableImplicitConversion: true },
     }),
   );
-
   app.useGlobalFilters(new HttpExceptionFilter());
 
+  // Proxy (Render/Heroku)
   if (process.env.TRUST_PROXY === '1') app.set('trust proxy', 1);
 
+  // Swagger
   const publicServer = process.env.PUBLIC_API_URL || 'http://localhost:4000/api';
-
   const swaggerConfig = new DocumentBuilder()
     .setTitle('FUNDECODES API')
     .setDescription('API pública y de administración del sistema FUNDECODES. Incluye módulos administrativos, reportes, documentos y autenticación.')
     .setVersion('1.0')
-    // Importante: el nombre 'bearer' debe coincidir con @ApiBearerAuth('bearer') en tus controladores
     .addBearerAuth(
       {
         type: 'http',
@@ -79,16 +87,18 @@ async function bootstrap() {
     .addServer(publicServer)
     .build();
 
-  const swaggerDoc = SwaggerModule.createDocument(app, swaggerConfig, { ignoreGlobalPrefix: true });
-
+  // ⚠️ ignoreGlobalPrefix NO para swagger; lo servimos en /docs (sin /api)
+  const swaggerDoc = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('docs', app, swaggerDoc, {
     swaggerOptions: { persistAuthorization: true, displayRequestDuration: true, tryItOutEnabled: true },
     customSiteTitle: 'FUNDECODES API Docs',
   });
 
+  // Prisma shutdown hooks
   const prisma = app.get(PrismaService);
   await prisma.enableShutdownHooks(app);
 
+  // Puerto correcto para Render
   const port = Number(process.env.PORT ?? 4000);
   await app.listen(port);
 
