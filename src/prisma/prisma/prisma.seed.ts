@@ -5,8 +5,9 @@ import * as bcrypt from 'bcryptjs'
 const prisma = new PrismaClient()
 
 const ADMIN_EMAIL = 'admin@fundecodes.org'
-const ADMIN_PASS  = 'fundecodes2025'
+const ADMIN_PASS  = process.env.ADMIN_DEFAULT_PASSWORD || 'fundecodes2025'
 const ADMIN_NAME  = 'Administrador Fundecodes'
+const ADMIN_FORCE_RESET = (process.env.ADMIN_FORCE_RESET || 'false').toLowerCase() === 'true'
 
 async function main() {
   console.log('🌱 Sembrando roles, permisos y usuario admin…')
@@ -14,7 +15,7 @@ async function main() {
   const MODULE_PERMS = [
     { key: 'voluntario:access',   description: 'Acceso al módulo de Voluntariado' },
     { key: 'sanciones:access',    description: 'Acceso al módulo de Sanciones' },
-    { key: 'projects:access',    description: 'Acceso al módulo de Proyectos' },
+    { key: 'projects:access',     description: 'Acceso al módulo de Proyectos' },
     { key: 'solicitudes:access',  description: 'Acceso al módulo de Solicitudes' },
     { key: 'facturas:access',     description: 'Acceso al módulo de Facturas' },
     { key: 'contabilidad:access', description: 'Acceso al módulo de Contabilidad' },
@@ -57,8 +58,9 @@ async function main() {
   if (!adminRole) throw new Error('Role "admin" no encontrado')
 
   const existingAdmin = await prisma.user.findUnique({ where: { email: ADMIN_EMAIL } })
+  const hashed = await bcrypt.hash(ADMIN_PASS, 12)
+
   if (!existingAdmin) {
-    const hashed = await bcrypt.hash(ADMIN_PASS, 12)
     await prisma.user.create({
       data: {
         email: ADMIN_EMAIL,
@@ -71,6 +73,14 @@ async function main() {
     })
     console.log('✅ Usuario admin creado.')
   } else {
+    // Forzar actualización de password si está vacío o si ADMIN_FORCE_RESET=true
+    if (ADMIN_FORCE_RESET || !existingAdmin.password) {
+      await prisma.user.update({
+        where: { id: existingAdmin.id },
+        data: { password: hashed, approved: true, verified: true },
+      })
+      console.log('🔑 Password del admin actualizado por seed.')
+    }
     await prisma.userRole.upsert({
       where: { userId_roleId: { userId: existingAdmin.id, roleId: adminRole.id } },
       update: {},

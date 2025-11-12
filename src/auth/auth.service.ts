@@ -2,6 +2,7 @@
 import {
   Injectable,
   UnauthorizedException,
+  ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
@@ -13,6 +14,16 @@ import { EmailService } from '../common/services/email.service';
 
 const BCRYPT_COST = 12;
 
+type UserWithRoles = {
+  id: number;
+  email: string;
+  name: string | null;
+  password: string | null;
+  verified: boolean;
+  approved?: boolean | null;
+  roles: { role: { name: string; permissions: { key: string }[] } }[];
+};
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -23,14 +34,14 @@ export class AuthService {
     private readonly emailService: EmailService,
   ) {}
 
-  // ------------------------ LOGIN ------------------------
+  // ------------------------ LOGIN (validación) ------------------------
   async validateUser(email: string, pass: string) {
     const user = await this.prisma.user.findUnique({
       where: { email },
       include: {
         roles: {
           include: {
-            role: { include: { permissions: true } }, // ⬅️ traemos permisos desde BD
+            role: { include: { permissions: true } },
           },
         },
       },
@@ -38,25 +49,28 @@ export class AuthService {
 
     if (!user) throw new UnauthorizedException('Credenciales inválidas');
 
+    // ⚠️ Si no tiene password definida, no intentes comparar
+    if (!user.password) {
+      throw new UnauthorizedException('Usuario sin contraseña definida');
+    }
+
     const ok = await bcrypt.compare(pass, user.password);
     if (!ok) throw new UnauthorizedException('Credenciales inválidas');
 
+    // Estados de cuenta
     const approved = (user as any).approved ?? false;
     if (!approved) {
-      throw new UnauthorizedException({
-        success: false,
-        statusCode: 401,
-        error: 'ACCOUNT_NOT_APPROVED',
-        message:
-          'usted podrá iniciar sesión hasta que su cuenta haya sido aprobada',
-        path: '/auth/login',
-        timestamp: new Date().toISOString(),
-      });
+      throw new ForbiddenException('Cuenta no aprobada');
+    }
+    const verified = (user as any).verified ?? false;
+    if (!verified) {
+      throw new ForbiddenException('Cuenta no verificada');
     }
 
-    return user;
+    return user as UserWithRoles;
   }
 
+  // ------------------------ LOGIN (emite JWT) ------------------------
   async login(user: {
     id: number;
     email: string;
@@ -64,7 +78,7 @@ export class AuthService {
     verified: boolean;
     roles: { role: { name: string; permissions: { key: string }[] } }[];
   }) {
-    // Asegura datos frescos (por si el strategy no incluyó permisos)
+    // Relee desde DB para payload fresco (por si faltó algo en strategy)
     const dbUser = await this.prisma.user.findUnique({
       where: { id: user.id },
       include: {
@@ -85,7 +99,7 @@ export class AuthService {
       sub: dbUser.id,
       email: dbUser.email,
       roles,
-      permissions, // ⬅️ clave estandarizada para el guard
+      permissions,
     };
 
     const access_token = await this.jwtService.signAsync(payload);
@@ -96,12 +110,11 @@ export class AuthService {
         id: dbUser.id,
         email: dbUser.email,
         name: dbUser.name,
-        verified: (dbUser as any).verified,
+        verified: (dbUser as any).verified ?? false,
         approved: (dbUser as any).approved ?? false,
         roles,
         permissions,
-        // compat con front existente (si esperaba 'perms'):
-        perms: permissions,
+        perms: permissions, // compat
       },
     };
   }
@@ -202,12 +215,10 @@ export class AuthService {
       select: { id: true, email: true },
     });
 
-    // Ahora SÍ avisamos cuando no existe
     if (!user) {
       throw new BadRequestException('El correo no está registrado');
     }
 
-    // Alineado con tu .env
     const secret =
       this.config.get<string>('RESET_JWT_SECRET') ||
       this.config.get<string>('RESET_PASSWORD_JWT_SECRET') ||
