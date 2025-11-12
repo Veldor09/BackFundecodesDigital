@@ -18,7 +18,7 @@ import { SancionesModule } from './SistemaAdmin/sanciones/sanciones.module';
 import { SolicitudesModule } from './SistemaAdmin/solicitudes/solicitudes.module';
 import { ContabilidadModule } from './SistemaAdmin/contabilidad/contabilidad.module';
 import { BillingModule } from './SistemaAdmin/billing/billing.module';
-import { ReportesModule } from './SistemaAdmin/reportes/reportes.module'; // ✅ Nuevo módulo de reportes
+import { ReportesModule } from './SistemaAdmin/reportes/reportes.module';
 
 // Público
 import { NewsModule } from './news/news.module';
@@ -32,6 +32,9 @@ import { AuthModule } from './auth/auth.module';
 
 // Comunes
 import { CommonModule } from './common/common.module';
+
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
 
 @Module({
   imports: [
@@ -105,5 +108,7 @@ import { CommonModule } from './common/common.module';
     // Comunes
     CommonModule,
   ],
+  controllers: [AppController],
+  providers: [AppService],  
 })
 export class AppModule {}
