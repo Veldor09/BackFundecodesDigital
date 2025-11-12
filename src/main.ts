@@ -13,8 +13,30 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 function parseCsv(v?: string) {
   return (v ?? '')
     .split(',')
-    .map(s => s.trim())
+    .map((s) => s.trim())
     .filter(Boolean);
+}
+
+function env(k: string, d = '') {
+  return (process.env[k] ?? d).toString().trim();
+}
+
+function buildAllowedOrigins() {
+  const defaults = [
+    // Swagger corriendo en el mismo servicio Render
+    'https://backfundecodesdigital.onrender.com',
+    // Tu front en Vercel (ajústalo si cambias de dominio)
+    'https://front-fundecodes-digital-cedl.vercel.app',
+    // Localhost comunes
+    'http://localhost:3000',
+    'http://localhost:5173',
+  ];
+
+  const frontendUrl = env('FRONTEND_URL').replace(/\/$/, '');
+  const extra = parseCsv(env('CORS_ALLOWED_ORIGINS'));
+  const set = new Set<string>([...defaults, ...extra]);
+  if (frontendUrl) set.add(frontendUrl);
+  return set;
 }
 
 async function bootstrap() {
@@ -30,21 +52,14 @@ async function bootstrap() {
   app.use(json({ limit: '10mb' }));
   app.use(urlencoded({ extended: true, limit: '10mb' }));
 
-  // CORS
+  // ===== CORS =====
   const FRONTEND_URL = (process.env.FRONTEND_URL ?? 'http://localhost:3000').replace(/\/$/, '');
-  const EXTRA_ORIGINS = parseCsv(process.env.CORS_EXTRA_ORIGINS); // CSV opcional
   const ALLOW_LOCALHOST = true;
+  const ALLOWED = buildAllowedOrigins();
 
   app.enableCors({
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true); // health checks / curl
-      if (origin === FRONTEND_URL) return callback(null, true);
-      if (EXTRA_ORIGINS.includes(origin)) return callback(null, true);
-      if (ALLOW_LOCALHOST && /^http:\/\/localhost:\d+$/i.test(origin)) return callback(null, true);
-      return callback(new Error('CORS bloqueado'), false);
-    },
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
     allowedHeaders: [
       'Origin',
       'X-Requested-With',
@@ -55,6 +70,36 @@ async function bootstrap() {
       'Pragma',
     ],
     exposedHeaders: ['ETag'],
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
+    origin: (origin, callback) => {
+      // Peticiones sin origin (curl, health checks, SSR interno) → permitir
+      if (!origin) return callback(null, true);
+
+      // Coincide FRONTEND_URL
+      if (origin === FRONTEND_URL) return callback(null, true);
+
+      // Lista blanca declarada (CORS_ALLOWED_ORIGINS y defaults)
+      if (ALLOWED.has(origin)) return callback(null, true);
+
+      // Permitir subdominios de Render (*.onrender.com) — útil para previews
+      try {
+        const host = new URL(origin).hostname;
+        if (host.endsWith('.onrender.com')) {
+          return callback(null, true);
+        }
+      } catch {
+        // ignorar errores de parseo
+      }
+
+      // Permitir localhost:* si está activado
+      if (ALLOW_LOCALHOST && /^http:\/\/localhost:\d+$/i.test(origin)) {
+        return callback(null, true);
+      }
+
+      // ❌ No permitido: NO lanzar error (evita 500). Solo deshabilita CORS.
+      return callback(null, false);
+    },
   });
 
   // Pipes y filtros
@@ -73,8 +118,11 @@ async function bootstrap() {
     app.set('trust proxy', 1);
   }
 
-  // Swagger
-  const publicServer = process.env.PUBLIC_API_URL || 'http://localhost:4000/api';
+  // ===== Swagger =====
+  const publicServer =
+    process.env.PUBLIC_API_URL ||
+    (process.env.RENDER_EXTERNAL_URL ? `${process.env.RENDER_EXTERNAL_URL}/api` : 'http://localhost:4000/api');
+
   const swaggerConfig = new DocumentBuilder()
     .setTitle('FUNDECODES API')
     .setDescription(
@@ -119,7 +167,8 @@ async function bootstrap() {
   console.log(`🚀 API:      http://localhost:${port}/api`);
   console.log(`📘 Swagger:  http://localhost:${port}/docs`);
   console.log(`🌍 CORS base: ${FRONTEND_URL}`);
-  if (EXTRA_ORIGINS.length) console.log(`🌍 Extra:    ${EXTRA_ORIGINS.join(', ')}`);
+  const extras = parseCsv(process.env.CORS_ALLOWED_ORIGINS);
+  if (extras.length) console.log(`🌍 Extra:    ${extras.join(', ')}`);
   console.log('============================================================');
 }
 
