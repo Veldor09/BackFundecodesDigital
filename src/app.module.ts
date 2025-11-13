@@ -37,6 +37,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
 @Module({
+  
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
@@ -106,9 +107,11 @@ import { AppService } from './app.service';
     // Auth
     AuthModule,
 
+    
     // Comunes
     CommonModule,
   ],
+
   controllers: [AppController],
   providers: [AppService],  
 })
