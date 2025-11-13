@@ -1,7 +1,7 @@
 // src/common/services/email.service.ts
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Resend } from 'resend';
+import * as nodemailer from 'nodemailer';
 import { PrismaService } from '../../prisma/prisma.service';
 
 type EmailLogStatus = 'PENDING' | 'RETRYING' | 'SENT' | 'FAILED';
@@ -11,7 +11,7 @@ const MAX_ATTEMPTS = 3;
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
 
-  private resend?: Resend;
+  private transporter: nodemailer.Transporter;
   private readonly from: string;
   private readonly frontendUrl?: string;
   private readonly setPasswordPath: string;
@@ -22,43 +22,110 @@ export class EmailService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
   ) {
+    /* ========= Flag global para activar/desactivar envío real ========= */
     const sendEmailsEnv = (this.config.get<string>('SEND_EMAILS') ?? 'true').toLowerCase();
-    const resendApiKey = this.config.get<string>('RESEND_API_KEY') || '';
+    this.sendEmails = sendEmailsEnv !== 'false';
 
-    if (resendApiKey) {
-      this.resend = new Resend(resendApiKey);
-    } else {
-      this.logger.warn('[Email] RESEND_API_KEY no está definido; no se enviarán correos reales.');
+    /* ========= Config SMTP (Gmail) desde .env =========
+       MAIL_HOST=smtp.gmail.com
+       MAIL_PORT=465
+       MAIL_USERNAME=tu_correo@gmail.com
+       MAIL_PASSWORD=app_password
+       MAIL_SECURE=true
+       MAIL_REQUIRE_TLS=false
+       MAIL_DEBUG=false
+    ==================================================== */
+    const host = this.config.get<string>('MAIL_HOST') || 'smtp.gmail.com';
+    const port = Number(this.config.get<string>('MAIL_PORT') || '465');
+    const user = this.config.get<string>('MAIL_USERNAME') || '';
+    const pass = this.config.get<string>('MAIL_PASSWORD') || '';
+
+    const secureFromEnv =
+      (this.config.get<string>('MAIL_SECURE') || 'true').toLowerCase() === 'true';
+    // Si usas 465 => SSL directo
+    const secure = secureFromEnv || port === 465;
+
+    // STARTTLS solo aplica cuando secure=false (puerto 587)
+    const requireTLSFromEnv =
+      (this.config.get<string>('MAIL_REQUIRE_TLS') || 'false').toLowerCase() === 'true';
+    const requireTLS = !secure && requireTLSFromEnv;
+
+    const mailDebug =
+      (this.config.get<string>('MAIL_DEBUG') || 'false').toLowerCase() === 'true';
+
+    if (!user || !pass) {
+      this.logger.warn(
+        '[SMTP] MAIL_USERNAME o MAIL_PASSWORD vacíos. Se SIMULARÁ el envío (no se enviarán correos reales).',
+      );
+      this.sendEmails = false as any;
     }
 
-    this.sendEmails = !!resendApiKey && sendEmailsEnv !== 'false';
+    this.transporter = nodemailer.createTransport({
+      host,
+      port,
+      secure, // 465:true (SSL), 587:false (STARTTLS)
+      auth: user && pass ? { user, pass } : undefined,
 
-    if (!this.sendEmails) {
+      // Opcional: pool para varios envíos
+      pool: true,
+      maxConnections: 3,
+      maxMessages: 100,
+
+      // Timeouts para estabilidad
+      connectionTimeout: 30_000,
+      greetingTimeout: 20_000,
+      socketTimeout: 30_000,
+
+      // STARTTLS si secure=false y así lo pides
+      requireTLS,
+
+      // TLS moderno
+      tls: { minVersion: 'TLSv1.2' },
+
+      // Debug
+      logger: mailDebug,
+      debug: mailDebug,
+    });
+
+    // Verificación de conexión solo si realmente vamos a enviar
+    if (this.sendEmails) {
+      this.transporter
+        .verify()
+        .then(() => this.logger.log('[SMTP] Conexión OK con Gmail'))
+        .catch((e) =>
+          this.logger.warn(
+            `[SMTP] No se pudo verificar la conexión: ${e?.message || e}`,
+          ),
+        );
+    } else {
       this.logger.warn(
-        '[DEV-EMAIL OFF] Envío de correos deshabilitado (SEND_EMAILS=false o sin RESEND_API_KEY)',
+        '[DEV-EMAIL OFF] Envío de correos deshabilitado por SEND_EMAILS=false o credenciales incompletas',
       );
     }
 
-    // Remitente
+    // Remitente (ideal: tu mismo Gmail o lo que pongas en MAIL_FROM)
     this.from =
       this.config.get<string>('MAIL_FROM') ||
-      this.config.get<string>('RESEND_FROM') ||
-      'Fundecodes <no-reply@test.mlsender.net>';
+      (user ? `Fundecodes <${user}>` : 'Fundecodes <no-reply@gmail.com>');
 
-    // Front-end y rutas
-    this.frontendUrl = this.config.get<string>('FRONTEND_URL') || undefined;
+    // Front-end y rutas (usa primero PUBLIC_FRONTEND_URL si existe)
+    this.frontendUrl =
+      this.config.get<string>('PUBLIC_FRONTEND_URL') ||
+      this.config.get<string>('FRONTEND_URL') ||
+      undefined;
+
     this.setPasswordPath =
       this.config.get<string>('FRONTEND_SET_PASSWORD_PATH') || '/set-password';
     this.resetPasswordPath =
       this.config.get<string>('FRONTEND_RESET_PASSWORD_PATH') || '/reset-password';
   }
 
-  // Prisma (tolerante si EmailLog aún no existe)
+  // ========= Accessor para Prisma tolerante =========
   private get db(): any {
     return this.prisma as any;
   }
 
-  // ===== Helpers de logging tolerantes =====
+  // ========= Helpers de logging tolerantes =========
   private async safeLogCreate(data: any) {
     try {
       return await this.db.emailLog.create({ data });
@@ -72,14 +139,14 @@ export class EmailService {
     try {
       return await this.db.emailLog.update({ where, data });
     } catch {
-      // noop si tabla no existe
+      // noop si la tabla no existe
     }
   }
 
-  // ===== Builder genérico de links =====
+  // ========= Builder genérico de links =========
   private buildLinkWithPath(token: string, path: string) {
     if (!this.frontendUrl) {
-      this.logger.error('FRONTEND_URL no está definido; usando ruta relativa');
+      this.logger.error('FRONTEND_URL/PUBLIC_FRONTEND_URL no está definido; usando ruta relativa');
       const p = path.startsWith('/') ? path : `/${path}`;
       return `${p}?token=${encodeURIComponent(token)}`;
     }
@@ -98,25 +165,27 @@ export class EmailService {
     return this.buildLinkWithPath(token, this.resetPasswordPath);
   }
 
-  // ===== Reintentos con backoff =====
+  // ========= Reintentos con backoff exponencial =========
   private async sendWithRetry(sendFn: () => Promise<void>, logId: number) {
-    if (!this.resend) {
-      throw new BadRequestException('Servicio de email no configurado correctamente.');
-    }
-
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {
         await this.safeLogUpdate(
           { id: logId },
           {
             attempt,
-            status: attempt === 1 ? ('PENDING' as EmailLogStatus) : ('RETRYING' as EmailLogStatus),
+            status:
+              attempt === 1
+                ? ('PENDING' as EmailLogStatus)
+                : ('RETRYING' as EmailLogStatus),
           },
         );
 
         await sendFn();
 
-        await this.safeLogUpdate({ id: logId }, { status: 'SENT' as EmailLogStatus });
+        await this.safeLogUpdate(
+          { id: logId },
+          { status: 'SENT' as EmailLogStatus },
+        );
         return;
       } catch (err: any) {
         const msg = err?.message || String(err);
@@ -124,22 +193,26 @@ export class EmailService {
           { id: logId },
           {
             status:
-              attempt < MAX_ATTEMPTS ? ('RETRYING' as EmailLogStatus) : ('FAILED' as EmailLogStatus),
+              attempt < MAX_ATTEMPTS
+                ? ('RETRYING' as EmailLogStatus)
+                : ('FAILED' as EmailLogStatus),
             error: msg.slice(0, 1000),
           },
         );
-        this.logger.warn(`[Resend] intento ${attempt} falló: ${msg}`);
+        this.logger.warn(`[SMTP] intento ${attempt} falló: ${msg}`);
 
         if (attempt < MAX_ATTEMPTS) {
-          await new Promise((r) => setTimeout(r, 500 * Math.pow(2, attempt - 1)));
+          await new Promise((r) =>
+            setTimeout(r, 500 * Math.pow(2, attempt - 1)),
+          );
         } else {
-          throw new BadRequestException(`Error enviando email: ${msg}`);
+          throw new BadRequestException(`SMTP error: ${msg}`);
         }
       }
     }
   }
 
-  // ===== Email de bienvenida con link para establecer contraseña =====
+  // ========= Email de bienvenida con link para establecer contraseña =========
   async sendWelcomeSetPasswordEmail(to: string, tokenOrLink: string) {
     const link = tokenOrLink.startsWith('http')
       ? tokenOrLink
@@ -173,27 +246,29 @@ export class EmailService {
       this.logger.warn(`[DEV-EMAIL OFF] To: ${to}`);
       this.logger.warn(`[DEV-EMAIL OFF] Subject: ${subject}`);
       this.logger.debug(`[DEV-EMAIL OFF] LINK: ${link}`);
-      await this.safeLogUpdate({ id: log.id }, { attempt: 1, status: 'SENT' as EmailLogStatus });
+      await this.safeLogUpdate(
+        { id: log.id },
+        { attempt: 1, status: 'SENT' as EmailLogStatus },
+      );
       return;
     }
 
     await this.sendWithRetry(
-      async () => {
-        await this.resend!.emails.send({
+      () =>
+        this.transporter.sendMail({
           from: this.from,
           to,
           subject,
           html,
           text: `Establece tu contraseña: ${link}`,
-        });
-      },
+        }),
       log.id,
     );
 
     this.logger.log(`Email (welcome) enviado a ${to}`);
   }
 
-  // ===== Email de recuperación de contraseña =====
+  // ========= Email de recuperación de contraseña =========
   async sendResetPasswordEmail(to: string, tokenOrLink: string) {
     const link = tokenOrLink.startsWith('http')
       ? tokenOrLink
@@ -225,28 +300,35 @@ export class EmailService {
     if (!this.sendEmails) {
       this.logger.warn(`[DEV-EMAIL OFF] To: ${to}`);
       this.logger.debug(`[DEV-EMAIL OFF] LINK: ${link}`);
-      await this.safeLogUpdate({ id: log.id }, { attempt: 1, status: 'SENT' as EmailLogStatus });
+      await this.safeLogUpdate(
+        { id: log.id },
+        { attempt: 1, status: 'SENT' as EmailLogStatus },
+      );
       return;
     }
 
     await this.sendWithRetry(
-      async () => {
-        await this.resend!.emails.send({
+      () =>
+        this.transporter.sendMail({
           from: this.from,
           to,
           subject,
           html,
           text: `Restablece tu contraseña: ${link}`,
-        });
-      },
+        }),
       log.id,
     );
 
     this.logger.log(`Email (reset) enviado a ${to}`);
   }
 
-  // ===== Método genérico para envío simple (sin plantilla) =====
-  async sendMail(options: { to: string; subject: string; text: string; html?: string }) {
+  // ========= Método genérico para envío simple (sin plantilla) =========
+  async sendMail(options: {
+    to: string;
+    subject: string;
+    text: string;
+    html?: string;
+  }) {
     const { to, subject, text, html } = options;
 
     const log = await this.safeLogCreate({
@@ -261,20 +343,22 @@ export class EmailService {
       this.logger.warn(`[DEV-EMAIL OFF] To: ${to}`);
       this.logger.debug(`[DEV-EMAIL OFF] Subject: ${subject}`);
       this.logger.debug(`[DEV-EMAIL OFF] Text: ${text}`);
-      await this.safeLogUpdate({ id: log.id }, { attempt: 1, status: 'SENT' as EmailLogStatus });
+      await this.safeLogUpdate(
+        { id: log.id },
+        { attempt: 1, status: 'SENT' as EmailLogStatus },
+      );
       return;
     }
 
     await this.sendWithRetry(
-      async () => {
-        await this.resend!.emails.send({
+      () =>
+        this.transporter.sendMail({
           from: this.from,
           to,
           subject,
           text,
-          html,
-        });
-      },
+          html: html || undefined,
+        }),
       log.id,
     );
 
