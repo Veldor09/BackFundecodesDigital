@@ -349,4 +349,33 @@ export class BillingService {
 
     return rows.sort((a, b) => +new Date(a.date as any) - +new Date(b.date as any));
   }
+
+  async createBillingRequestFromSolicitud(solicitudId: number) {
+    const solicitud = await this.prisma.solicitudCompra.findUnique({
+      where: { id: solicitudId },
+      include: { usuario: true },
+    });
+
+    if (!solicitud) throw new NotFoundException('Solicitud no encontrada');
+    if (solicitud.estadoDirector !== 'APROBADA')
+      throw new ForbiddenException('La solicitud no está aprobada por dirección');
+
+    // Evitar duplicados
+    const existing = await this.prisma.billingRequest.findFirst({
+      where: { concept: `Solicitud #${solicitud.id}` },
+    });
+
+    if (existing) return existing;
+
+    // Crear uno nuevo
+    return this.prisma.billingRequest.create({
+      data: {
+        amount: 0, // puedes calcularlo si tienes lógica de monto
+        concept: `Solicitud #${solicitud.id}`,
+        projectId: 1, // <-- puedes inferirlo desde usuario o lógica interna
+        status: 'APPROVED',
+        history: [{ fromSolicitud: true, at: new Date().toISOString() }],
+      },
+    });
+  }
 }

@@ -35,6 +35,7 @@ import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 
+
 function filenameCb(
   req: ExRequest,
   file: Express.Multer.File,
@@ -50,6 +51,7 @@ function filenameCb(
 @Permissions('facturas:access')
 @Controller('requests')
 export class RequestsController {
+  billingService: any;
   constructor(private svc: BillingService) {}
 
   @Get()
@@ -130,4 +132,13 @@ export class RequestsController {
       currency: body.currency as any,
     });
   }
+
+  // billing.controller.ts (agregar en AccountingController o RequestsController)
+
+@Post('request-from-solicitud/:solicitudId')
+async createBillingRequestFromSolicitud(
+  @Param('solicitudId', ParseIntPipe) solicitudId: number,
+) {
+  return this.billingService.createBillingRequestFromSolicitud(solicitudId);
+}
 }
