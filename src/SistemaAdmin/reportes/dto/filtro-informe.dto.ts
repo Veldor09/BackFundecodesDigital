@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsDateString } from 'class-validator';
 
 export enum TipoPeriodo {
   ANIO = 'ANIO',
@@ -8,45 +8,52 @@ export enum TipoPeriodo {
 
 export class FiltroInformeDto {
   @ApiProperty({
-    description: 'Lista separada por comas o arreglo con los módulos a incluir.',
-    example: ['projects', 'billing', 'solicitudes', 'collaborators', 'volunteers'],
-  })
-  @IsOptional()
-  @IsString({ each: true })
-  modulos: string | string[];
-
-  @ApiProperty({
-    description:
-      'Tipo de agrupación: Mensual, Trimestral, Cuatrimestral, Semestral o Anual',
-    example: 'Anual',
-  })
-  @IsString()
-  tipoReporte: string;
-
-  @ApiProperty({
-    description: 'Tipo de periodo del informe (ANIO o RANGO)',
+    description: 'Periodo del informe (ANIO o RANGO)',
     enum: TipoPeriodo,
+    example: 'RANGO',
   })
-  @IsEnum(TipoPeriodo)
   periodo: TipoPeriodo;
 
-  @ApiPropertyOptional({ example: 2025 })
+  @ApiPropertyOptional({
+    description: 'Año a consultar (solo si periodo=ANIO)',
+    example: '2025',
+  })
   @IsOptional()
   @IsString()
   anio?: string;
 
-  @ApiPropertyOptional({ example: '2024-01-01' })
+  @ApiPropertyOptional({
+    description: 'Fecha de inicio (solo si periodo=RANGO)',
+    example: '2024-01-01',
+  })
   @IsOptional()
-  @IsString()
+  @IsDateString()
   fechaInicio?: string;
 
-  @ApiPropertyOptional({ example: '2025-12-31' })
+  @ApiPropertyOptional({
+    description: 'Fecha de fin (solo si periodo=RANGO)',
+    example: '2025-12-31',
+  })
   @IsOptional()
-  @IsString()
+  @IsDateString()
   fechaFin?: string;
 
-  @ApiPropertyOptional({ example: 'pdf' })
+  @ApiProperty({
+    description: 'Tipo de agrupación: Mensual, Trimestral, Cuatrimestral, Semestral, Anual',
+    example: 'Mensual',
+  })
+  tipoReporte: string;
+
+  @ApiProperty({
+    description: 'Lista separada por comas con los módulos a incluir en el informe',
+    example: 'projects,billing,solicitudes,collaborators,volunteers',
+  })
+  modulos: string;
+
+  @ApiProperty({
+    description: 'Formato del informe (pdf o excel)',
+    example: 'pdf',
+  })
   @IsOptional()
-  @IsString()
   formato?: string;
 }

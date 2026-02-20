@@ -3,24 +3,20 @@ import {
   Get,
   Query,
   Res,
-  Req,
   BadRequestException,
-  UseGuards,
 } from '@nestjs/common';
-import { Response, Request } from 'express';
+import { Response } from 'express';
 import { ReportesService } from './reportes.service';
-import { ApiQuery, ApiResponse, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
-import { JwtAuthGuard } from 'src/auth/jwt-auth.guard'; 
 import { FiltroInformeDto } from './dto/filtro-informe.dto';
+import { ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 @ApiTags('Reportes')
-@ApiBearerAuth('bearer') // 👈 Swagger reconocerá el JWT Bearer token
 @Controller('reportes')
 export class ReportesController {
   constructor(private readonly reportesService: ReportesService) {}
 
   /* ============================================================
-     📊 Obtener datos del informe en formato JSON (vista previa)
+     📊 Obtener datos del informe en formato JSON (para vista previa)
   ============================================================ */
   @Get('datos')
   @ApiQuery({
@@ -50,22 +46,16 @@ export class ReportesController {
   @ApiQuery({
     name: 'tipoReporte',
     required: true,
-    description:
-      'Tipo de agrupación: Mensual, Trimestral, Cuatrimestral, Semestral o Anual',
+    description: 'Tipo de agrupación: Mensual, Trimestral, Cuatrimestral, Semestral, Anual',
     example: 'Mensual',
   })
   @ApiQuery({
     name: 'modulos',
     required: true,
-    description:
-      'Lista separada por comas con los módulos a incluir en el informe',
+    description: 'Lista separada por comas con los módulos a incluir en el informe',
     example: 'projects,billing,solicitudes,collaborators,volunteers',
   })
-  @ApiResponse({
-    status: 200,
-    description: 'Datos consolidados del informe en formato JSON.',
-  })
-  async obtenerDatos(@Query() query: FiltroInformeDto) {
+  async obtenerDatos(@Query() query: any) {
     try {
       // === 1️⃣ Normalizar módulos ===
       let modulos: string[] = [];
@@ -78,6 +68,7 @@ export class ReportesController {
       } else if (Array.isArray(query.modulos)) {
         modulos = query.modulos;
       } else {
+        // Por defecto todos los módulos
         modulos = [
           'projects',
           'billing',
@@ -91,8 +82,11 @@ export class ReportesController {
       const filtros = { ...query, modulos };
       const data = await this.reportesService.generarInforme(filtros);
 
-      // === 3️⃣ Retornar datos JSON ===
-      return { success: true, ...data };
+      // === 3️⃣ Retornar datos en formato JSON ===
+      return {
+        success: true,
+        ...data,
+      };
     } catch (error) {
       console.error('❌ Error al obtener datos del informe:', error);
       throw new BadRequestException('Error al obtener los datos del informe.');
@@ -100,9 +94,8 @@ export class ReportesController {
   }
 
   /* ============================================================
-     📦 Exportar informes (PDF / Excel) + Guardado + Auditoría
+     📦 Exportar informes PDF o Excel (versión estable)
   ============================================================ */
-  @UseGuards(JwtAuthGuard)
   @Get('exportar')
   @ApiQuery({
     name: 'periodo',
@@ -131,15 +124,13 @@ export class ReportesController {
   @ApiQuery({
     name: 'tipoReporte',
     required: true,
-    description:
-      'Tipo de agrupación: Mensual, Trimestral, Cuatrimestral, Semestral o Anual',
+    description: 'Tipo de agrupación: Mensual, Trimestral, Cuatrimestral, Semestral, Anual',
     example: 'Mensual',
   })
   @ApiQuery({
     name: 'modulos',
     required: true,
-    description:
-      'Lista separada por comas con los módulos a incluir en el informe',
+    description: 'Lista separada por comas con los módulos a incluir en el informe',
     example: 'projects,billing,solicitudes,collaborators,volunteers',
   })
   @ApiQuery({
@@ -148,16 +139,7 @@ export class ReportesController {
     description: 'Formato de salida: pdf o excel',
     example: 'pdf',
   })
-  @ApiResponse({
-    status: 200,
-    description:
-      'Devuelve el archivo PDF o Excel generado, guardado y auditado.',
-  })
-  async exportarInforme(
-    @Query() query: any,
-    @Req() req: Request,
-    @Res() res: Response,
-  ) {
+  async exportarInforme(@Query() query: any, @Res() res: Response) {
     try {
       // === 1️⃣ Normalizar módulos ===
       let modulos: string[] = [];
@@ -170,6 +152,7 @@ export class ReportesController {
       } else if (Array.isArray(query.modulos)) {
         modulos = query.modulos;
       } else {
+        // Por defecto todos los módulos
         modulos = [
           'projects',
           'billing',
@@ -183,66 +166,46 @@ export class ReportesController {
       const filtros = { ...query, modulos };
       const data = await this.reportesService.generarInforme(filtros);
 
-            // === 3️⃣ Determinar formato y usuario autenticado ===
+      // === 3️⃣ Exportar según formato ===
       const formato = (query.formato || 'pdf').toLowerCase();
 
-      // ⚡ Obtener usuario desde JWT
-      const user = req.user as { sub: number; email: string } | undefined;
+      if (formato === 'pdf') {
+        const buffer = await this.reportesService.generarPdf(data);
 
-      if (!user || !user.sub) {
-        console.error('❌ No se pudo determinar el usuario autenticado:', user);
-        throw new BadRequestException('No se pudo determinar el usuario autenticado.');
+        res.set({
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `attachment; filename="informe-fundecodes-${new Date()
+            .toISOString()
+            .split('T')[0]}.pdf"`,
+          'Content-Length': buffer.length,
+        });
+
+        return res.end(buffer);
       }
 
-      const userId = user.sub;
-      console.log(`👤 Usuario autenticado: ${user.email} (id=${userId})`);
+      if (['xlsx', 'excel', 'xls'].includes(formato)) {
+        const buffer = await this.reportesService.generarExcel(data);
 
+        res.set({
+          'Content-Type':
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'Content-Disposition': `attachment; filename="informe-fundecodes-${new Date()
+            .toISOString()
+            .split('T')[0]}.xlsx"`,
+          'Content-Length': buffer.length,
+        });
 
-      // === 4️⃣ Generar, guardar y auditar ===
-      const resultado = await this.reportesService.generarGuardarAuditar(
-        formato,
-        data,
-        userId,
+        return res.end(buffer);
+      }
+
+      throw new BadRequestException(
+        `Formato "${query.formato}" no soportado. Usa 'pdf' o 'excel'.`,
       );
-
-      // === 5️⃣ Preparar y enviar respuesta ===
-      const { buffer, filename } = resultado;
-
-      const mime =
-        formato === 'pdf'
-          ? 'application/pdf'
-          : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-
-      if (!buffer?.length) {
-        throw new BadRequestException(
-          'No se generó correctamente el archivo del informe.',
-        );
-      }
-
-      if (!filename) {
-        throw new BadRequestException(
-          'Falta el nombre del archivo en el informe generado.',
-        );
-      }
-
-      // Headers HTTP
-      res.set({
-        'Content-Type': mime,
-        'Content-Disposition': `attachment; filename="${filename}"`,
-        'Content-Length': buffer.length,
-      });
-
-      // Enviar archivo
-      return res.end(buffer);
-    } catch (err: unknown) {
-      const error = err as Error;
-      console.error('❌ ERROR DETALLADO AL EXPORTAR INFORME:', error);
-
-      throw new BadRequestException({
-        message: 'Error interno del servidor al exportar el informe.',
-        detalle: error.message || 'Error desconocido al generar el informe.',
-        stack: error.stack,
-      });
+    } catch (error) {
+      console.error('❌ Error interno al exportar el informe:', error);
+      throw new BadRequestException(
+        'Error interno del servidor al exportar el informe.',
+      );
     }
   }
 }
