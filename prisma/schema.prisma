@@ -30,7 +30,6 @@ model Project {
   status      ProjectStatus      @default(EN_PROCESO)
   documents   ProjectDocument[]
   images      ProjectImage[]
-  assignments ProjectVolunteer[]
 
   presupuestos        Presupuesto[]
   transacciones       Transaccion[]
@@ -195,18 +194,19 @@ model EmailLog {
 }
 
 model Voluntario {
-  id              Int                @id @default(autoincrement())
-  tipoDocumento   String             @map("tipo_documento")
-  numeroDocumento String             @unique @map("numero_documento") @db.VarChar(25)
-  nombreCompleto  String             @map("nombre_completo")
-  email           String             @unique @db.VarChar(160)
-  telefono        String?            @db.VarChar(25)
-  fechaNacimiento DateTime?          @map("fecha_nacimiento")
-  fechaIngreso    DateTime           @default(now()) @map("fecha_ingreso")
-  estado          ColaboradorEstado  @default(ACTIVO)
-  createdAt       DateTime           @default(now()) @map("created_at")
-  updatedAt       DateTime           @updatedAt @map("updated_at")
-  assignments     ProjectVolunteer[]
+  id              Int               @id @default(autoincrement())
+  tipoDocumento   String            @map("tipo_documento")
+  numeroDocumento String            @unique @map("numero_documento") @db.VarChar(25)
+  nombreCompleto  String            @map("nombre_completo")
+  email           String            @unique @db.VarChar(160)
+  telefono        String?           @db.VarChar(25)
+  fechaNacimiento DateTime?         @map("fecha_nacimiento")
+  fechaIngreso    DateTime          @default(now()) @map("fecha_ingreso")
+  estado          ColaboradorEstado @default(ACTIVO)
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  programas       ProgramaVoluntariadoAsignacion[]
+
   sanciones       Sancion[]
 
   @@map("voluntario")
@@ -257,16 +257,47 @@ model PasswordChangeLog {
   @@index([userId, createdAt])
 }
 
-model ProjectVolunteer {
-  projectId    Int
+enum VoluntariadoOrigen {
+  CUENTA_PROPIA
+  INTERMEDIARIO
+}
+
+model ProgramaVoluntariado {
+  id          Int      @id @default(autoincrement())
+  nombre      String
+  descripcion String?
+  lugar       String
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relación con voluntarios (vía tabla intermedia)
+  voluntarios ProgramaVoluntariadoAsignacion[]
+
+  @@map("programa_voluntariado")
+  @@index([nombre])
+}
+model ProgramaVoluntariadoAsignacion {
+  programaId   Int
   voluntarioId Int
-  assignedAt   DateTime @default(now())
 
-  project    Project    @relation(fields: [projectId], references: [id])
-  voluntario Voluntario @relation(fields: [voluntarioId], references: [id])
+  pagoRealizado Boolean            @default(false) @map("pago_realizado")
+  origen        VoluntariadoOrigen @default(CUENTA_PROPIA)
+  intermediario String?            @db.VarChar(160) // empresa o intermediario (si aplica)
 
-  @@id([projectId, voluntarioId])
-  @@map("project_volunteer")
+  fechaEntrada DateTime  @map("fecha_entrada")
+  fechaSalida  DateTime? @map("fecha_salida")
+  horasTotales Int       @default(0) @map("horas_totales")
+
+  assignedAt   DateTime  @default(now()) @map("assigned_at")
+
+  programa   ProgramaVoluntariado @relation(fields: [programaId], references: [id], onDelete: Cascade)
+  voluntario Voluntario           @relation(fields: [voluntarioId], references: [id], onDelete: Cascade)
+
+  @@id([programaId, voluntarioId])
+  @@index([voluntarioId])
+  @@index([programaId])
+  @@map("programa_voluntariado_asignacion")
 }
 
 enum SancionTipo {

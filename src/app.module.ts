@@ -19,6 +19,7 @@ import { SolicitudesModule } from './SistemaAdmin/solicitudes/solicitudes.module
 import { ContabilidadModule } from './SistemaAdmin/contabilidad/contabilidad.module';
 import { BillingModule } from './SistemaAdmin/billing/billing.module';
 import { ReportesModule } from './SistemaAdmin/reportes/reportes.module';
+import { ProgramaVoluntariadoModule } from './SistemaAdmin/ProgramaVoluntariado/programa-voluntariado.module';
 
 // Público
 import { NewsModule } from './news/news.module';
@@ -95,7 +96,8 @@ import { AppService } from './app.service';
     SolicitudesModule,
     ContabilidadModule,
     BillingModule,
-    ReportesModule, // ✅ añadido aquí
+    ReportesModule,
+    ProgramaVoluntariadoModule,
 
     // Público
     NewsModule,

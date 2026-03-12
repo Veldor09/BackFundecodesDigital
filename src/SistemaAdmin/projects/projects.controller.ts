@@ -71,51 +71,40 @@ export class ProjectsController {
     return this.service.list(query);
   }
 
-  // -------------------- DETALLE con caché HTTP + ETag --------------------
-  @ApiQuery({
-    name: 'ttl',
-    required: false,
-    description:
-      'Tiempo de cacheo en segundos (Cache-Control: public, max-age=ttl). Default 60.',
-    schema: { type: 'integer', default: 60, minimum: 0 },
-  })
-  @ApiQuery({
-    name: 'includeVols',
-    required: false,
-    description:
-      'Incluye asignaciones (voluntarios) solo cuando se pida. Valores: 1/true | 0/false',
-    schema: { type: 'string', enum: ['0', '1', 'true', 'false'] },
-  })
-  @Public() // ✅ detalle de proyecto también público
-  @Get(':idOrSlug')
-  async get(
-    @Param('idOrSlug') idOrSlug: string,
-    @Query('ttl', new DefaultValuePipe('60')) ttl: string,
-    @Query('includeVols') includeVols: string | undefined,
-    @Res() res: Response,
-  ) {
-    const data = await this.service.findOne(
-      idOrSlug,
-      includeVols === '1' || includeVols === 'true',
-    );
+// -------------------- DETALLE con caché HTTP + ETag --------------------
+@ApiQuery({
+  name: 'ttl',
+  required: false,
+  description:
+    'Tiempo de cacheo en segundos (Cache-Control: public, max-age=ttl). Default 60.',
+  schema: { type: 'integer', default: 60, minimum: 0 },
+})
+@Public() // ✅ detalle de proyecto también público
+@Get(':idOrSlug')
+async get(
+  @Param('idOrSlug') idOrSlug: string,
+  @Query('ttl', new DefaultValuePipe('60')) ttl: string,
+  @Res() res: Response,
+) {
+  const data = await this.service.findOne(idOrSlug);
 
-    const seconds = Math.max(0, Number.isFinite(+ttl) ? +ttl : 60);
-    res.setHeader(
-      'Cache-Control',
-      `public, max-age=${seconds}, stale-while-revalidate=120`,
-    );
+  const seconds = Math.max(0, Number.isFinite(+ttl) ? +ttl : 60);
+  res.setHeader(
+    'Cache-Control',
+    `public, max-age=${seconds}, stale-while-revalidate=120`,
+  );
 
-    const etagBase = (data as any).updatedAt
-      ? new Date((data as any).updatedAt).toISOString()
-      : '';
-    const etag = `"proj-${(data as any).id}-${etagBase}"`;
-    res.setHeader('ETag', etag);
+  const etagBase = (data as any).updatedAt
+    ? new Date((data as any).updatedAt).toISOString()
+    : '';
+  const etag = `"proj-${(data as any).id}-${etagBase}"`;
+  res.setHeader('ETag', etag);
 
-    const inm = res.req.headers['if-none-match'];
-    if (inm && inm === etag) return res.status(304).send();
+  const inm = res.req.headers['if-none-match'];
+  if (inm && inm === etag) return res.status(304).send();
 
-    return res.status(200).json(data);
-  }
+  return res.status(200).json(data);
+}
 
   // -------------------- CREAR --------------------
   @Post()
@@ -135,22 +124,6 @@ export class ProjectsController {
     return this.service.remove(id);
   }
 
-  // ===================== ASIGNACIONES =====================
-  @Post(':id/volunteers/:voluntarioId')
-  assignVolunteer(
-    @Param('id', ParseIntPipe) id: number,
-    @Param('voluntarioId', ParseIntPipe) voluntarioId: number,
-  ) {
-    return this.service.assignVolunteer(id, voluntarioId);
-  }
-
-  @Delete(':id/volunteers/:voluntarioId')
-  unassignVolunteer(
-    @Param('id', ParseIntPipe) id: number,
-    @Param('voluntarioId', ParseIntPipe) voluntarioId: number,
-  ) {
-    return this.service.unassignVolunteer(id, voluntarioId);
-  }
 
   // ===================== IMÁGENES (por URL) =====================
   @Post(':id/add-image-url')

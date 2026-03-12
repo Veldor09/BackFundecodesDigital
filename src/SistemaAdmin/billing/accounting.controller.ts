@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   Param,
+  ParseIntPipe,
   Post,
   Query,
   UploadedFile,
@@ -126,5 +127,13 @@ export class AccountingController {
   @ApiQuery({ name: 'projectId', required: true })
   getLedger(@Param('projectId') projectId: string) {
     return this.svc.getProgramLedger(Number(projectId));
+  }
+
+    /* ----- Crear BillingRequest desde una Solicitud aprobada ----- */
+  @Post('request-from-solicitud/:solicitudId')
+  async createBillingRequestFromSolicitud(
+    @Param('solicitudId', ParseIntPipe) solicitudId: number,
+  ) {
+    return this.svc.createBillingRequestFromSolicitud(solicitudId);
   }
 }
