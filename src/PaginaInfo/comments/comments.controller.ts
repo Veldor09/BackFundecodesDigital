@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { CommentsService } from './comments.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { Public } from '../../common/decorators/public.decorator';
@@ -22,8 +22,22 @@ export class CommentsController {
   }
 
   @Get('admin')
-  async getAdmin(@Query('status') status?: CommentStatus) {
-    return this.service.getAdminComments(status);
+  async getAdmin(
+    @Query('status') status?: CommentStatus,
+    @Query('search') search?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.service.getAdminComments({
+      status,
+      search,
+      from,
+      to,
+      page: page ? Number(page) : 1,
+      limit: limit ? Number(limit) : 10,
+    });
   }
 
   @Public()
@@ -40,5 +54,10 @@ export class CommentsController {
   @Patch(':id/deny')
   async deny(@Param('id') id: string) {
     return this.service.denyComment(id);
+  }
+
+  @Delete(':id')
+  async deleteComment(@Param('id') id: string) {
+    return this.service.deleteComment(id);
   }
 }
