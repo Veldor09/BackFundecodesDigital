@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 export class CreateProgramaVoluntariadoDto {
   @ApiProperty({ example: 'Programa Reforestación 2026' })
@@ -7,7 +7,7 @@ export class CreateProgramaVoluntariadoDto {
   @MaxLength(160)
   nombre: string;
 
-  @ApiProperty({ example: 'Programa de apoyo comunitario...', required: false })
+  @ApiPropertyOptional({ example: 'Programa de apoyo comunitario...' })
   @IsOptional()
   @IsString()
   descripcion?: string;
@@ -16,4 +16,14 @@ export class CreateProgramaVoluntariadoDto {
   @IsString()
   @MaxLength(160)
   lugar: string;
+
+  @ApiPropertyOptional({
+    example: 30,
+    description: '0 significa sin límite de participantes',
+    default: 0,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  limiteParticipantes?: number;
 }

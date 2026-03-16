@@ -81,38 +81,51 @@ export class ProgramaVoluntariadoService {
   // ===================== ASIGNACIONES =====================
 
   async assignVolunteer(programaId: number, voluntarioId: number, dto: AsignarVoluntarioDto) {
-    const [programa, vol] = await Promise.all([
-      this.prisma.programaVoluntariado.findUnique({ where: { id: programaId } }),
-      this.prisma.voluntario.findUnique({ where: { id: voluntarioId } }),
-    ]);
+  const [programa, vol, totalAsignados] = await Promise.all([
+    this.prisma.programaVoluntariado.findUnique({ where: { id: programaId } }),
+    this.prisma.voluntario.findUnique({ where: { id: voluntarioId } }),
+    this.prisma.programaVoluntariadoAsignacion.count({
+      where: { programaId },
+    }),
+  ]);
 
-    if (!programa) throw new NotFoundException('Programa no encontrado');
-    if (!vol) throw new NotFoundException('Voluntario no encontrado');
+  if (!programa) throw new NotFoundException('Programa no encontrado');
+  if (!vol) throw new NotFoundException('Voluntario no encontrado');
 
-    if (dto.origen === 'INTERMEDIARIO' && !dto.intermediario?.trim()) {
-      throw new BadRequestException('intermediario es requerido cuando origen=INTERMEDIARIO');
-    }
-
-    try {
-      return await this.prisma.programaVoluntariadoAsignacion.create({
-        data: {
-          programaId,
-          voluntarioId,
-          pagoRealizado: dto.pagoRealizado,
-          origen: dto.origen,
-          intermediario: dto.intermediario?.trim() || null,
-          fechaEntrada: new Date(dto.fechaEntrada),
-          fechaSalida: dto.fechaSalida ? new Date(dto.fechaSalida) : null,
-          horasTotales: dto.horasTotales,
-        },
-      });
-    } catch (e: any) {
-      if (e?.code === 'P2002') {
-        throw new BadRequestException('Voluntario ya está asignado a este programa');
-      }
-      throw e;
-    }
+  // ✅ validar cupo
+  if (
+    programa.limiteParticipantes > 0 &&
+    totalAsignados >= programa.limiteParticipantes
+  ) {
+    throw new BadRequestException(
+      `El programa ya alcanzó su límite de ${programa.limiteParticipantes} participantes`,
+    );
   }
+
+  if (dto.origen === 'INTERMEDIARIO' && !dto.intermediario?.trim()) {
+    throw new BadRequestException('intermediario es requerido cuando origen=INTERMEDIARIO');
+  }
+
+  try {
+    return await this.prisma.programaVoluntariadoAsignacion.create({
+      data: {
+        programaId,
+        voluntarioId,
+        pagoRealizado: dto.pagoRealizado,
+        origen: dto.origen,
+        intermediario: dto.intermediario?.trim() || null,
+        fechaEntrada: new Date(dto.fechaEntrada),
+        fechaSalida: dto.fechaSalida ? new Date(dto.fechaSalida) : null,
+        horasTotales: dto.horasTotales,
+      },
+    });
+  } catch (e: any) {
+    if (e?.code === 'P2002') {
+      throw new BadRequestException('Voluntario ya está asignado a este programa');
+    }
+    throw e;
+  }
+}
 
   // ✅ AHORA: update parcial (sin upsert)
   async updateAssignment(
