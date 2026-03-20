@@ -23,11 +23,8 @@ function env(k: string, d = '') {
 
 function buildAllowedOrigins() {
   const defaults = [
-    // Swagger corriendo en el mismo servicio Render
     'https://backfundecodesdigital.onrender.com',
-    // Tu front en Vercel (ajústalo si cambias de dominio)
     'https://front-fundecodes-digital-cedl.vercel.app',
-    // Localhost comunes
     'http://localhost:3000',
     'http://localhost:5173',
   ];
@@ -35,20 +32,24 @@ function buildAllowedOrigins() {
   const frontendUrl = env('FRONTEND_URL').replace(/\/$/, '');
   const extra = parseCsv(env('CORS_ALLOWED_ORIGINS'));
   const set = new Set<string>([...defaults, ...extra]);
+
   if (frontendUrl) set.add(frontendUrl);
+
   return set;
 }
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  // Prefijo global (toda tu API vive en /api)
+  // Prefijo global
   app.setGlobalPrefix('api');
 
-  // Archivos estáticos (si los usas)
-  app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads/' });
+  // Archivos estáticos
+  app.useStaticAssets(join(process.cwd(), 'uploads'), {
+    prefix: '/uploads/',
+  });
 
-  // Body size
+  // Límite del body
   app.use(json({ limit: '10mb' }));
   app.use(urlencoded({ extended: true, limit: '10mb' }));
 
@@ -73,16 +74,16 @@ async function bootstrap() {
     preflightContinue: false,
     optionsSuccessStatus: 204,
     origin: (origin, callback) => {
-      // Peticiones sin origin (curl, health checks, SSR interno) → permitir
+      // Permitir requests sin origin
       if (!origin) return callback(null, true);
 
-      // Coincide FRONTEND_URL
+      // Permitir el frontend principal
       if (origin === FRONTEND_URL) return callback(null, true);
 
-      // Lista blanca declarada (CORS_ALLOWED_ORIGINS y defaults)
+      // Permitir orígenes de la lista blanca
       if (ALLOWED.has(origin)) return callback(null, true);
 
-      // Permitir subdominios de Render (*.onrender.com) — útil para previews
+      // Permitir subdominios de Render
       try {
         const host = new URL(origin).hostname;
         if (host.endsWith('.onrender.com')) {
@@ -92,28 +93,32 @@ async function bootstrap() {
         // ignorar errores de parseo
       }
 
-      // Permitir localhost:* si está activado
+      // Permitir localhost en desarrollo
       if (ALLOW_LOCALHOST && /^http:\/\/localhost:\d+$/i.test(origin)) {
         return callback(null, true);
       }
 
-      // ❌ No permitido: NO lanzar error (evita 500). Solo deshabilita CORS.
+      // Bloquear sin lanzar error
       return callback(null, false);
     },
   });
 
-  // Pipes y filtros
+  // ===== Pipes globales =====
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
       transform: true,
       forbidNonWhitelisted: true,
-      transformOptions: { enableImplicitConversion: true },
+      transformOptions: {
+        enableImplicitConversion: true,
+      },
     }),
   );
+
+  // ===== Filtros globales =====
   app.useGlobalFilters(new HttpExceptionFilter());
 
-  // Trust proxy (Render/NGINX)
+  // ===== Trust proxy =====
   if (process.env.TRUST_PROXY === '1' || process.env.RENDER) {
     app.set('trust proxy', 1);
   }
@@ -121,7 +126,9 @@ async function bootstrap() {
   // ===== Swagger =====
   const publicServer =
     process.env.PUBLIC_API_URL ||
-    (process.env.RENDER_EXTERNAL_URL ? `${process.env.RENDER_EXTERNAL_URL}/api` : 'http://localhost:4000/api');
+    (process.env.RENDER_EXTERNAL_URL
+      ? `${process.env.RENDER_EXTERNAL_URL}/api`
+      : 'http://localhost:4000/api');
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('FUNDECODES API')
@@ -143,23 +150,40 @@ async function bootstrap() {
     .addServer(publicServer)
     .build();
 
-  const swaggerDoc = SwaggerModule.createDocument(app, swaggerConfig, { ignoreGlobalPrefix: true });
+  const swaggerDoc = SwaggerModule.createDocument(app, swaggerConfig, {
+    ignoreGlobalPrefix: true,
+  });
+
   SwaggerModule.setup('docs', app, swaggerDoc, {
-    swaggerOptions: { persistAuthorization: true, displayRequestDuration: true, tryItOutEnabled: true },
+    swaggerOptions: {
+      persistAuthorization: true,
+      displayRequestDuration: true,
+      tryItOutEnabled: true,
+    },
     customSiteTitle: 'FUNDECODES API Docs',
   });
 
-  // Handlers mínimos para `/` (GET/HEAD) => evitan 404 en Render
+  // ===== Health básico =====
   const http = app.getHttpAdapter();
-  http.get('/', (_req: any, res: any) => {
-    res.status(200).json({ ok: true, name: 'BackFundecodesDigital', docs: '/docs', api: '/api' });
-  });
-  http.head('/', (_req: any, res: any) => res.status(200).end());
 
-  // Prisma
+  http.get('/', (_req: any, res: any) => {
+    res.status(200).json({
+      ok: true,
+      name: 'BackFundecodesDigital',
+      docs: '/docs',
+      api: '/api',
+    });
+  });
+
+  http.head('/', (_req: any, res: any) => {
+    res.status(200).end();
+  });
+
+  // ===== Prisma =====
   const prisma = app.get(PrismaService);
   await prisma.enableShutdownHooks(app);
 
+  // ===== Listen =====
   const port = Number(process.env.PORT ?? 4000);
   await app.listen(port);
 
@@ -168,7 +192,9 @@ async function bootstrap() {
   console.log(`📘 Swagger:  http://localhost:${port}/docs`);
   console.log(`🌍 CORS base: ${FRONTEND_URL}`);
   const extras = parseCsv(process.env.CORS_ALLOWED_ORIGINS);
-  if (extras.length) console.log(`🌍 Extra:    ${extras.join(', ')}`);
+  if (extras.length) {
+    console.log(`🌍 Extra:    ${extras.join(', ')}`);
+  }
   console.log('============================================================');
 }
 

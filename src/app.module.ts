@@ -6,6 +6,9 @@ import Joi from 'joi';
 
 import { PrismaModule } from './prisma/prisma.module';
 
+// 🆕 NUEVO MÓDULO
+import { RespuestasFormularioModule } from './respuestas-formulario/respuestas-formulario.module';
+
 // Sistema Admin
 import { ProjectsModule } from './SistemaAdmin/projects/projects.module';
 import { DashboardModule } from './SistemaAdmin/dashboard/dashboard.module';
@@ -38,7 +41,6 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
 @Module({
-  
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
@@ -47,7 +49,7 @@ import { AppService } from './app.service';
         NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
         PORT: Joi.number().default(4000),
 
-        // --- DB (aceptar postgres/postgresql y validar ambas) ---
+        // --- DB ---
         DATABASE_URL: Joi.string()
           .uri({ scheme: ['postgres', 'postgresql'] })
           .required(),
@@ -55,7 +57,7 @@ import { AppService } from './app.service';
           .uri({ scheme: ['postgres', 'postgresql'] })
           .required(),
 
-        // --- FRONT (permitir http/https) ---
+        // --- FRONT ---
         FRONTEND_URL: Joi.string().uri({ scheme: ['http', 'https'] }).required(),
         FRONTEND_SET_PASSWORD_PATH: Joi.string().default('/set-password'),
         FRONTEND_RESET_PASSWORD_PATH: Joi.string().default('/reset-password'),
@@ -80,9 +82,16 @@ import { AppService } from './app.service';
       }),
     }),
 
-    CacheModule.register({isGlobal: true, ttl: 60_000, max: 500,}),
+    CacheModule.register({
+      isGlobal: true,
+      ttl: 60_000,
+      max: 500,
+    }),
 
     PrismaModule,
+
+    // 🆕 RESPUESTAS FORMULARIO
+    RespuestasFormularioModule,
 
     // Sistema Admin
     ProjectsModule,
@@ -109,12 +118,11 @@ import { AppService } from './app.service';
     // Auth
     AuthModule,
 
-    
     // Comunes
     CommonModule,
   ],
 
   controllers: [AppController],
-  providers: [AppService],  
+  providers: [AppService],
 })
 export class AppModule {}

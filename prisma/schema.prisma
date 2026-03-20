@@ -559,3 +559,30 @@ model Comment {
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
 }
+
+enum TipoFormulario {
+  CONTACTO
+  VOLUNTARIADO
+  ALIANZA
+  COMENTARIO
+}
+
+enum EstadoRespuestaFormulario {
+  PENDIENTE
+  REVISADO
+  RESPONDIDO
+}
+
+model RespuestaFormulario {
+  id             String                    @id @default(uuid())
+  tipoFormulario TipoFormulario
+  nombre         String?
+  correo         String?
+  telefono       String?
+  payload        Json
+  estado         EstadoRespuestaFormulario @default(PENDIENTE)
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+
+  @@map("respuestas_formulario")
+}
