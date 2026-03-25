@@ -10,8 +10,8 @@ import {
 
 export enum EstadoRespuestaFormularioDto {
   PENDIENTE = 'PENDIENTE',
-  REVISADO = 'REVISADO',
-  RESPONDIDO = 'RESPONDIDO',
+  ACEPTADO = 'ACEPTADO',
+  RECHAZADO = 'RECHAZADO',
 }
 
 export class QueryRespuestaFormularioDto {

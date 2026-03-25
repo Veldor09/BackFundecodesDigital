@@ -262,21 +262,24 @@ enum VoluntariadoOrigen {
   INTERMEDIARIO
 }
 
-model ProgramaVoluntariado {
-  id          Int      @id @default(autoincrement())
-  nombre      String
-  descripcion String?
-  lugar       String
+model ProgramaVoluntariado { 
+id Int @id @default(autoincrement()) 
+nombre String 
+descripcion String? 
+lugar String 
+limiteParticipantes Int @default(0) 
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+createdAt DateTime @default(now()) 
+updatedAt DateTime @updatedAt 
 
-  // Relación con voluntarios (vía tabla intermedia)
-  voluntarios ProgramaVoluntariadoAsignacion[]
+// Relación con voluntarios (vía tabla intermedia) 
 
-  @@map("programa_voluntariado")
-  @@index([nombre])
+voluntarios ProgramaVoluntariadoAsignacion[] 
+@@map("programa_voluntariado") 
+@@index([nombre]) 
 }
+
+
 model ProgramaVoluntariadoAsignacion {
   programaId   Int
   voluntarioId Int
@@ -566,8 +569,8 @@ enum TipoFormulario {
 
 enum EstadoRespuestaFormulario {
   PENDIENTE
-  REVISADO
-  RESPONDIDO
+  ACEPTADO
+  RECHAZADO
 }
 
 model RespuestaFormulario {
