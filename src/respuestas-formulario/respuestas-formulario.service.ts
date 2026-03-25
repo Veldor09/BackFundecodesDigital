@@ -12,6 +12,9 @@ import { UpdateEstadoRespuestaDto } from './dto/update-estado-respuesta.dto';
 export class RespuestasFormularioService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Crear una nueva respuesta de formulario
+   */
   async create(dto: CreateRespuestaFormularioDto) {
     this.validatePayloadByFormType(dto.tipoFormulario, dto.payload);
 
@@ -26,6 +29,13 @@ export class RespuestasFormularioService {
     });
   }
 
+  /**
+   * Obtener todas las respuestas con filtros:
+   * - tipoFormulario
+   * - estado
+   * - search (nombre, correo, teléfono)
+   * - paginación
+   */
   async findAll(query: QueryRespuestaFormularioDto) {
     const page = query.page ?? 1;
     const limit = query.limit ?? 10;
@@ -45,21 +55,9 @@ export class RespuestasFormularioService {
       const term = query.search.trim();
 
       where.OR = [
-        {
-          nombre: {
-            contains: term,
-          },
-        },
-        {
-          correo: {
-            contains: term,
-          },
-        },
-        {
-          telefono: {
-            contains: term,
-          },
-        },
+        { nombre: { contains: term, mode: 'insensitive' } },
+        { correo: { contains: term, mode: 'insensitive' } },
+        { telefono: { contains: term, mode: 'insensitive' } },
       ];
     }
 
@@ -68,9 +66,7 @@ export class RespuestasFormularioService {
         where,
         skip,
         take: limit,
-        orderBy: {
-          createdAt: 'desc',
-        },
+        orderBy: { createdAt: 'desc' },
       }),
       this.prisma.respuestaFormulario.count({ where }),
     ]);
@@ -86,6 +82,9 @@ export class RespuestasFormularioService {
     };
   }
 
+  /**
+   * Buscar una respuesta por ID
+   */
   async findOne(id: string) {
     const respuesta = await this.prisma.respuestaFormulario.findUnique({
       where: { id },
@@ -98,6 +97,10 @@ export class RespuestasFormularioService {
     return respuesta;
   }
 
+  /**
+   * Cambiar el estado del formulario
+   * Estados: PENDIENTE | REVISADO | RESPONDIDO
+   */
   async updateEstado(id: string, dto: UpdateEstadoRespuestaDto) {
     await this.findOne(id);
 
@@ -109,6 +112,9 @@ export class RespuestasFormularioService {
     });
   }
 
+  /**
+   * Validar que el payload tenga lo necesario para cada tipo de formulario
+   */
   private validatePayloadByFormType(
     tipoFormulario: string,
     payload: Record<string, any>,
@@ -139,8 +145,13 @@ export class RespuestasFormularioService {
     }
   }
 
+  /** Validación del formulario de CONTACTO */
   private validateContacto(payload: Record<string, any>) {
-    if (!payload.mensaje || typeof payload.mensaje !== 'string' || !payload.mensaje.trim()) {
+    if (
+      !payload.mensaje ||
+      typeof payload.mensaje !== 'string' ||
+      !payload.mensaje.trim()
+    ) {
       throw new BadRequestException(
         'El mensaje es obligatorio para el formulario de contacto',
       );
@@ -148,11 +159,12 @@ export class RespuestasFormularioService {
 
     if (payload.mensaje.trim().length < 5) {
       throw new BadRequestException(
-        'El mensaje del formulario de contacto debe tener al menos 5 caracteres',
+        'El mensaje debe tener al menos 5 caracteres',
       );
     }
   }
 
+  /** Validación del formulario de VOLUNTARIADO */
   private validateVoluntariado(payload: Record<string, any>) {
     if (
       !payload.disponibilidad ||
@@ -175,6 +187,7 @@ export class RespuestasFormularioService {
     }
   }
 
+  /** Validación del formulario de ALIANZA */
   private validateAlianza(payload: Record<string, any>) {
     if (
       !payload.organizacion ||
@@ -197,6 +210,7 @@ export class RespuestasFormularioService {
     }
   }
 
+  /** Validación del formulario de COMENTARIO */
   private validateComentario(payload: Record<string, any>) {
     if (
       !payload.comentario ||
@@ -204,7 +218,7 @@ export class RespuestasFormularioService {
       !payload.comentario.trim()
     ) {
       throw new BadRequestException(
-        'El comentario es obligatorio para este formulario',
+        'El comentario es obligatorio',
       );
     }
 

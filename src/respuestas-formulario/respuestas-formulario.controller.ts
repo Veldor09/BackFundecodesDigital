@@ -18,16 +18,19 @@ export class RespuestasFormularioController {
     private readonly respuestasFormularioService: RespuestasFormularioService,
   ) {}
 
+ 
   @Post()
   create(@Body() dto: CreateRespuestaFormularioDto) {
     return this.respuestasFormularioService.create(dto);
   }
+
 
   @Get()
   findAll(@Query() query: QueryRespuestaFormularioDto) {
     return this.respuestasFormularioService.findAll(query);
   }
 
+  
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.respuestasFormularioService.findOne(id);
