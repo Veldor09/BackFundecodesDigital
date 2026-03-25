@@ -569,8 +569,8 @@ enum TipoFormulario {
 
 enum EstadoRespuestaFormulario {
   PENDIENTE
-  REVISADO
-  RESPONDIDO
+  ACEPTADO
+  RECHAZADO
 }
 
 model RespuestaFormulario {

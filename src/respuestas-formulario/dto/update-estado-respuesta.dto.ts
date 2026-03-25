@@ -1,14 +1,14 @@
 import { IsEnum } from 'class-validator';
 
-export enum EstadoRespuestaFormularioUpdateDto {
+export enum EstadoRespuestaFormularioDto {
   PENDIENTE = 'PENDIENTE',
-  REVISADO = 'REVISADO',
-  RESPONDIDO = 'RESPONDIDO',
+  ACEPTADO = 'ACEPTADO',
+  RECHAZADO = 'RECHAZADO',
 }
 
 export class UpdateEstadoRespuestaDto {
-  @IsEnum(EstadoRespuestaFormularioUpdateDto, {
+  @IsEnum(EstadoRespuestaFormularioDto, {
     message: 'El estado no es válido',
   })
-  estado: EstadoRespuestaFormularioUpdateDto;
+  estado: EstadoRespuestaFormularioDto;
 }
