@@ -83,6 +83,32 @@ export class RespuestasFormularioService {
   }
 
   /**
+   * Contar respuestas pendientes solo de CONTACTO y VOLUNTARIADO
+   */
+  async getPendingCount() {
+    const [contacto, voluntariado] = await Promise.all([
+      this.prisma.respuestaFormulario.count({
+        where: {
+          tipoFormulario: 'CONTACTO',
+          estado: 'PENDIENTE',
+        },
+      }),
+      this.prisma.respuestaFormulario.count({
+        where: {
+          tipoFormulario: 'VOLUNTARIADO',
+          estado: 'PENDIENTE',
+        },
+      }),
+    ]);
+
+    return {
+      contacto,
+      voluntariado,
+      total: contacto + voluntariado,
+    };
+  }
+
+  /**
    * Buscar una respuesta por ID
    */
   async findOne(id: string) {
@@ -99,7 +125,7 @@ export class RespuestasFormularioService {
 
   /**
    * Cambiar el estado del formulario
-   * Estados: PENDIENTE | REVISADO | RESPONDIDO
+   * Estados esperados por el frontend: PENDIENTE | ACEPTADO | RECHAZADO
    */
   async updateEstado(id: string, dto: UpdateEstadoRespuestaDto) {
     await this.findOne(id);
@@ -217,9 +243,7 @@ export class RespuestasFormularioService {
       typeof payload.comentario !== 'string' ||
       !payload.comentario.trim()
     ) {
-      throw new BadRequestException(
-        'El comentario es obligatorio',
-      );
+      throw new BadRequestException('El comentario es obligatorio');
     }
 
     if (payload.comentario.trim().length < 3) {
