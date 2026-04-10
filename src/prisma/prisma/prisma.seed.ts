@@ -19,6 +19,8 @@ async function main() {
     { key: 'solicitudes:access',  description: 'Acceso al módulo de Solicitudes' },
     { key: 'facturas:access',     description: 'Acceso al módulo de Facturas' },
     { key: 'contabilidad:access', description: 'Acceso al módulo de Contabilidad' },
+    { key: 'programavoluntariado:access', description: 'Acceso al módulo de Programa Voluntariado' },
+    { key: 'reportes:access', description: 'Acceso al módulo de Reportes' },
   ]
   const MANAGE_PERMS = [
     { key: 'users.manage',    description: 'Gestionar usuarios' },
@@ -40,10 +42,10 @@ async function main() {
     admin: ALL_PERMS.map(p => p.key),
     voluntario: ['voluntario:access'],
     colaboradorfacturas: ['facturas:access','solicitudes:access'],
-    colaboradorvoluntariado: ['voluntario:access','sanciones:access'],
+    colaboradorvoluntariado: ['voluntario:access','sanciones:access','programavoluntariado:access'],
     colaboradorproyecto: ['projects:access'],
     colaboradorcontabilidad: ['contabilidad:access','solicitudes:access','facturas:access'],
-    colaboradorvoluntario: ['voluntario:access','sanciones:access'],
+    colaboradorvoluntario: ['voluntario:access','sanciones:access','programavoluntariado:access'],
   }
 
   for (const [name, keys] of Object.entries(ROLE_TO_PERMS)) {
