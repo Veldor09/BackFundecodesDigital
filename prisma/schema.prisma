@@ -572,12 +572,12 @@ enum EstadoRespuestaFormulario {
   ACEPTADO
   RECHAZADO
 }
-ee
-model RespuestaFormulario {e
-  correo         String?e
+
+model RespuestaFormulario {
+  correo         String?
   estado         EstadoRespuestaFormulario @default(PENDIENTE)
   createdAt      DateTime                  @default(now())
   updatedAt      DateTime                  @updatedAt
-eeee
-  @@map("respuestas_formulario")eeeeee
-}eee
+
+  @@map("respuestas_formulario")
+}
