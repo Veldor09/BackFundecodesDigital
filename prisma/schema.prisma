@@ -572,17 +572,12 @@ enum EstadoRespuestaFormulario {
   ACEPTADO
   RECHAZADO
 }
-
-model RespuestaFormulario {
-  id             String                    @id @default(uuid())
-  tipoFormulario TipoFormulario
-  nombre         String?
-  correo         String?
-  telefono       String?
-  payload        Json
+ee
+model RespuestaFormulario {e
+  correo         String?e
   estado         EstadoRespuestaFormulario @default(PENDIENTE)
   createdAt      DateTime                  @default(now())
   updatedAt      DateTime                  @updatedAt
-
-  @@map("respuestas_formulario")
-}
+eeee
+  @@map("respuestas_formulario")eeeeee
+}eee
