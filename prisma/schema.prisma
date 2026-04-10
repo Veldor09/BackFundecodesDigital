@@ -574,7 +574,12 @@ enum EstadoRespuestaFormulario {
 }
 
 model RespuestaFormulario {
+  id             String                    @id @default(uuid())
+  tipoFormulario TipoFormulario
+  nombre         String?
   correo         String?
+  telefono       String?
+  payload        Json
   estado         EstadoRespuestaFormulario @default(PENDIENTE)
   createdAt      DateTime                  @default(now())
   updatedAt      DateTime                  @updatedAt
