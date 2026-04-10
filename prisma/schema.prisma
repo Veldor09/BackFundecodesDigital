@@ -574,10 +574,11 @@ enum EstadoRespuestaFormulario {
 }
 
 model RespuestaFormulario {
+  id             Int                        @id @default(autoincrement())
   correo         String?
-  estado         EstadoRespuestaFormulario @default(PENDIENTE)
-  createdAt      DateTime                  @default(now())
-  updatedAt      DateTime                  @updatedAt
+  estado         EstadoRespuestaFormulario  @default(PENDIENTE)
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
 
   @@map("respuestas_formulario")
 }
