@@ -8,16 +8,20 @@ import {
   Post,
   Query,
   UploadedFile,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { ApiBody, ApiConsumes, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
-  import { diskStorage } from 'multer';
+import { diskStorage } from 'multer';
 import type { Request as ExRequest } from 'express';
 import { extname } from 'path';
 import { BillingService } from './billing.service';
 import { CreateAllocationDto } from './dto/create-allocation.dto';
 import { CreatePaymentDto } from './dto/create-payment.dto';
+import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 
 function fname(
   req: ExRequest,
@@ -31,6 +35,9 @@ function fname(
 }
 
 @ApiTags('Billing - Accounting')
+@ApiBearerAuth('bearer')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@Permissions('facturas:access')
 @Controller('billing')
 export class AccountingController {
   constructor(private svc: BillingService) {}

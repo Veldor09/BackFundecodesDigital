@@ -4,13 +4,20 @@ import {
   Query,
   Res,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { ReportesService } from './reportes.service';
 import { FiltroInformeDto } from './dto/filtro-informe.dto';
-import { ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 
 @ApiTags('Reportes')
+@ApiBearerAuth('bearer')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@Permissions('reportes:access')
 @Controller('reportes')
 export class ReportesController {
   constructor(private readonly reportesService: ReportesService) {}

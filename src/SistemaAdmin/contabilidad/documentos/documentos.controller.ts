@@ -24,6 +24,7 @@ import { CreateDocumentoDto } from './dto/create-documento.dto';
 import { JwtAuthGuard } from '../../../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../../../common/guards/permissions.guard';
 import { Permissions } from '../../../common/decorators/permissions.decorator';
+import { Audit } from '../../auditoria/audit.decorator';
 
 // ✔️ Firma correcta del callback: (error: Error | null, filename: string) => void
 function fileName(
@@ -84,6 +85,14 @@ export class DocumentosController {
       required: ['projectId', 'proyecto', 'mes', 'anio', 'file'],
     },
   })
+  @Audit({
+    accion: 'CONTABILIDAD_DOCUMENTO_SUBIR',
+    entidad: 'DocumentoContable',
+    resolveDetalle: ({ result }) => {
+      const r = result as any;
+      return `Subió documento contable "${r?.nombre ?? ''}" (${r?.mes}/${r?.anio}) en proyecto #${r?.projectId}.`;
+    },
+  })
   upload(@UploadedFile() file: Express.Multer.File, @Body() dto: CreateDocumentoDto) {
     return this.service.create(dto, file);
   }
@@ -102,6 +111,11 @@ export class DocumentosController {
 
   @Delete(':id')
   @HttpCode(204)
+  @Audit({
+    accion: 'CONTABILIDAD_DOCUMENTO_ELIMINAR',
+    entidad: 'DocumentoContable',
+    resolveDetalle: ({ params }) => `Eliminó documento contable ${params.id}.`,
+  })
   async remove(@Param('id') id: string) {
     await this.service.remove(id);
   }

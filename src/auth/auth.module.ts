@@ -27,13 +27,23 @@ import { JwtStrategy } from './jwt.strategy';
       session: false,
     }),
 
-    // JWT configurado desde env
+    // JWT configurado desde env (sin fallback inseguro)
     JwtModule.registerAsync({
       inject: [ConfigService],
-      useFactory: (cfg: ConfigService) => ({
-        secret: cfg.get<string>('JWT_SECRET') ?? 'dev-secret',
-        signOptions: { expiresIn: '1d' },
-      }),
+      useFactory: (cfg: ConfigService) => {
+        const secret = cfg.get<string>('JWT_SECRET');
+        if (!secret || secret.length < 32) {
+          throw new Error(
+            '[AUTH] JWT_SECRET debe estar definido y tener al menos 32 caracteres en producción.',
+          );
+        }
+        return {
+          secret,
+          signOptions: {
+            expiresIn: cfg.get<string>('JWT_EXPIRES') ?? '1d',
+          },
+        };
+      },
     }),
   ],
   controllers: [AuthController],

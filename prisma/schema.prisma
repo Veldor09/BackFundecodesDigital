@@ -41,6 +41,9 @@ model Project {
   payments           Payment[]
   receipts           Receipt[]
 
+  // Solicitudes de compra que apuntan a este proyecto.
+  solicitudes        SolicitudCompra[]   @relation("ProjectSolicitudes")
+
   @@unique([title, place, area])
   @@index([status])
   @@index([updatedAt])
@@ -262,21 +265,24 @@ enum VoluntariadoOrigen {
   INTERMEDIARIO
 }
 
-model ProgramaVoluntariado { 
-id Int @id @default(autoincrement()) 
-nombre String 
-descripcion String? 
-lugar String 
-limiteParticipantes Int @default(0) 
+model ProgramaVoluntariado {
+  id                  Int                              @id @default(autoincrement())
+  nombre              String
+  descripcion         String?
+  lugar               String
+  limiteParticipantes Int                              @default(0)
 
-createdAt DateTime @default(now()) 
-updatedAt DateTime @updatedAt 
+  createdAt           DateTime                         @default(now())
+  updatedAt           DateTime                         @updatedAt
 
-// Relación con voluntarios (vía tabla intermedia) 
+  // Relación con voluntarios (vía tabla intermedia)
+  voluntarios         ProgramaVoluntariadoAsignacion[]
 
-voluntarios ProgramaVoluntariadoAsignacion[] 
-@@map("programa_voluntariado") 
-@@index([nombre]) 
+  // Solicitudes de compra que apuntan a este programa.
+  solicitudes         SolicitudCompra[]
+
+  @@map("programa_voluntariado")
+  @@index([nombre])
 }
 
 
@@ -349,6 +355,11 @@ enum EstadoDirector {
   RECHAZADA
 }
 
+enum TipoOrigenSolicitud {
+  PROGRAMA
+  PROYECTO
+}
+
 model SolicitudCompra {
   id                  Int                  @id @default(autoincrement())
   titulo              String
@@ -361,9 +372,27 @@ model SolicitudCompra {
   comentarioDirector  String?
   usuarioId           Int?
   usuario             User?                @relation(fields: [usuarioId], references: [id])
+
+  // Monto solicitado. Nullable para no romper solicitudes existentes;
+  // el FE/back valida que sea obligatorio en nuevas solicitudes.
+  monto               Decimal?             @db.Decimal(16, 2)
+
+  // Destino de la solicitud — debe ser EXACTAMENTE uno de los dos:
+  //   tipoOrigen=PROGRAMA  ⇒ programaId set, projectId null
+  //   tipoOrigen=PROYECTO  ⇒ projectId set, programaId null
+  tipoOrigen          TipoOrigenSolicitud?
+  programaId          Int?
+  programa            ProgramaVoluntariado? @relation(fields: [programaId], references: [id])
+  projectId           Int?
+  project             Project?             @relation(fields: [projectId], references: [id], name: "ProjectSolicitudes")
+
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   historial           SolicitudHistorial[]
+
+  @@index([programaId])
+  @@index([projectId])
+  @@index([usuarioId])
 }
 
 model SolicitudHistorial {
@@ -535,13 +564,36 @@ model Receipt {
 }
 
 model Auditoria {
-  id        Int      @id @default(autoincrement())
-  userId    Int?
-  accion    String
-  detalle   String?
-  createdAt DateTime @default(now())
+  id         Int      @id @default(autoincrement())
+  userId     Int?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
-  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  // Identidad redundante: el usuario puede borrarse y aún así queremos saber quién actuó.
+  userEmail  String?
+  userName   String?
+
+  // Acción legible: "SOLICITUD_CREAR", "PROYECTO_EDITAR", "VOLUNTARIO_SANCIONAR", etc.
+  accion     String
+
+  // Tipo de entidad afectada ("Solicitud", "Proyecto", "Voluntario", ...) e id (string para soportar cuid/int).
+  entidad    String?
+  entidadId  String?
+
+  // Resumen humano del evento; ej.: "Aprobó solicitud #41 (₡250.000) para programa Reforestación".
+  detalle    String?
+
+  // Payload extra (estado anterior/nuevo, body sanitizado, etc.).
+  metadata   Json?
+
+  // Trazabilidad para auditorías de seguridad.
+  ip         String?
+  userAgent  String?
+
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([entidad, entidadId])
+  @@index([accion])
 }
 
 enum CommentStatus {

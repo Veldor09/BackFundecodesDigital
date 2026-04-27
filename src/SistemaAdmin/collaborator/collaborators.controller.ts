@@ -10,6 +10,7 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -25,9 +26,15 @@ import { UpdateCollaboratorDto } from './dto/update-collaborator.dto';
 import { ListCollaboratorsQuery } from './dto/list-collaborators.query';
 import { CollaboratorRol } from './dto/collaborator-rol.enum';
 import { CollaboratorEstado } from './dto/collaborator-estado.enum';
+import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import { Permissions } from '../../common/decorators/permissions.decorator';
+import { Audit } from '../auditoria/audit.decorator';
 
 @ApiTags('Colaboradores')
 @ApiBearerAuth('bearer')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@Permissions('collaborators:access')
 @Controller('collaborators')
 export class CollaboratorsController {
   constructor(private readonly service: CollaboratorsService) {}
@@ -36,6 +43,14 @@ export class CollaboratorsController {
   @Post()
   @ApiOperation({ summary: 'Crear colaborador' })
   @ApiResponse({ status: 201, description: 'Creado' })
+  @Audit({
+    accion: 'COLABORADOR_CREAR',
+    entidad: 'Colaborador',
+    resolveDetalle: ({ result }) => {
+      const r = result as any;
+      return `Creó colaborador "${r?.nombreCompleto ?? ''}" (${r?.correo ?? ''}) con rol ${r?.rol ?? '?'}.`;
+    },
+  })
   async create(@Body() dto: CreateCollaboratorDto) {
     const created = await this.service.create({
       nombreCompleto: dto.nombreCompleto,
@@ -110,6 +125,18 @@ export class CollaboratorsController {
   @Patch(':id')
   @HttpCode(204)
   @ApiOperation({ summary: 'Actualizar colaborador (204 No Content)' })
+  @Audit({
+    accion: 'COLABORADOR_EDITAR',
+    entidad: 'Colaborador',
+    resolveDetalle: ({ params, body }) => {
+      const cambios: string[] = [];
+      if (body?.rol) cambios.push(`rol→${body.rol}`);
+      if (body?.estado) cambios.push(`estado→${body.estado}`);
+      if (body?.correo) cambios.push(`correo→${body.correo}`);
+      const resumen = cambios.length ? ` (${cambios.join(', ')})` : '';
+      return `Editó colaborador #${params.id}${resumen}.`;
+    },
+  })
   async update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateCollaboratorDto,
@@ -131,6 +158,12 @@ export class CollaboratorsController {
   // PATCH /collaborators/:id/toggle-status
   @Patch(':id/toggle-status')
   @ApiOperation({ summary: 'Alternar estado (ACTIVO/INACTIVO)' })
+  @Audit({
+    accion: 'COLABORADOR_TOGGLE_ESTADO',
+    entidad: 'Colaborador',
+    resolveDetalle: ({ params, result }) =>
+      `Alternó estado de colaborador #${params.id} → ${(result as any)?.estado ?? '?'}.`,
+  })
   async toggleStatus(@Param('id', ParseIntPipe) id: number) {
     // Devuelve el colaborador actualizado (200 OK)
     return this.service.toggleStatus(id);
@@ -140,6 +173,11 @@ export class CollaboratorsController {
   @Patch(':id/deactivate')
   @HttpCode(204)
   @ApiOperation({ summary: 'Desactivar colaborador (idempotente)' })
+  @Audit({
+    accion: 'COLABORADOR_DESACTIVAR',
+    entidad: 'Colaborador',
+    resolveDetalle: ({ params }) => `Desactivó colaborador #${params.id}.`,
+  })
   async deactivate(@Param('id', ParseIntPipe) id: number) {
     await this.service.deactivate(id);
     return; // 204
@@ -149,6 +187,12 @@ export class CollaboratorsController {
   @Patch(':id/issue-temp-password')
   @HttpCode(204)
   @ApiOperation({ summary: 'Emitir contraseña temporal' })
+  @Audit({
+    accion: 'COLABORADOR_PASS_TEMPORAL',
+    entidad: 'Colaborador',
+    resolveDetalle: ({ params }) =>
+      `Emitió contraseña temporal para colaborador #${params.id}.`,
+  })
   async issueTempPassword(@Param('id', ParseIntPipe) id: number) {
     await this.service.issueTemporaryPassword(id);
     return; // 204
@@ -158,6 +202,11 @@ export class CollaboratorsController {
   @Delete(':id')
   @HttpCode(204)
   @ApiOperation({ summary: 'Eliminar colaborador' })
+  @Audit({
+    accion: 'COLABORADOR_ELIMINAR',
+    entidad: 'Colaborador',
+    resolveDetalle: ({ params }) => `Eliminó colaborador #${params.id}.`,
+  })
   async remove(@Param('id', ParseIntPipe) id: number) {
     await this.service.remove(id);
     return; // 204

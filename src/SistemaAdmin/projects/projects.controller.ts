@@ -42,6 +42,9 @@ import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { Public } from '../../common/decorators/public.decorator'; // ✅ añadido
 
+// ⬇️ Auditoría
+import { Audit } from '../auditoria/audit.decorator';
+
 // Helper para normalizar enlaces de Google Drive
 function normalizeDriveUrl(url: string): string {
   const m = url?.match(/\/file\/d\/([^/]+)\//);
@@ -108,18 +111,35 @@ async get(
 
   // -------------------- CREAR --------------------
   @Post()
+  @Audit({
+    accion: 'PROYECTO_CREAR',
+    entidad: 'Proyecto',
+    resolveDetalle: ({ result }) =>
+      `Creó proyecto "${(result as any)?.title ?? '(sin título)'}".`,
+  })
   create(@Body() dto: CreateProjectDto) {
     return this.service.create(dto);
   }
 
   // -------------------- ACTUALIZAR --------------------
   @Patch(':id')
+  @Audit({
+    accion: 'PROYECTO_EDITAR',
+    entidad: 'Proyecto',
+    resolveDetalle: ({ params, result }) =>
+      `Editó proyecto #${params.id} "${(result as any)?.title ?? ''}".`,
+  })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateProjectDto) {
     return this.service.update(id, dto);
   }
 
   // -------------------- ELIMINAR --------------------
   @Delete(':id')
+  @Audit({
+    accion: 'PROYECTO_ELIMINAR',
+    entidad: 'Proyecto',
+    resolveDetalle: ({ params }) => `Eliminó proyecto #${params.id}.`,
+  })
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.service.remove(id);
   }

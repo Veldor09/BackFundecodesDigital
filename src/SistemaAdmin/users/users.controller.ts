@@ -118,9 +118,4 @@ export class UsersController {
     return this.usersService.removeRoleById(id, roleId);
   }
 
-  // (Opcional) Echo para pruebas rápidas del body
-  @Post('_echo')
-  echo(@Body() body: any) {
-    return { received: body };
-  }
 }

@@ -57,13 +57,17 @@ export class SolicitudesController {
       properties: {
         titulo: { type: 'string', example: 'Compra de materiales' },
         descripcion: { type: 'string', example: 'Necesito papelería para oficina' },
+        monto: { type: 'number', example: 250000 },
+        tipoOrigen: { type: 'string', enum: ['PROGRAMA', 'PROYECTO'], example: 'PROGRAMA' },
+        programaId: { type: 'integer', example: 4, nullable: true },
+        projectId: { type: 'integer', example: 7, nullable: true },
         usuarioId: { type: 'integer', example: 3, nullable: true },
         archivos: {
           type: 'array',
           items: { type: 'string', format: 'binary' },
         },
       },
-      required: ['titulo', 'descripcion'],
+      required: ['titulo', 'descripcion', 'monto', 'tipoOrigen'],
     },
   })
   @ApiCreatedResponse({ description: 'Solicitud creada exitosamente' })
@@ -81,11 +85,15 @@ export class SolicitudesController {
   create(
     @Body() dto: CreateSolicitudDto,
     @UploadedFiles() archivos: Express.Multer.File[],
-    @Req() req: Request & { user?: { id?: number; userId?: number } },
+    @Req() req: Request & { user?: { id?: number; userId?: number; email?: string; name?: string } },
   ) {
-    const usuarioId = dto.usuarioId ?? req.user?.userId ?? req.user?.id ?? null;
+    const actor = {
+      userId: dto.usuarioId ?? req.user?.userId ?? req.user?.id ?? null,
+      email: req.user?.email ?? null,
+      name: req.user?.name ?? null,
+    };
     const paths = archivos?.map((f) => `/uploads/solicitudes/${f.filename}`) ?? [];
-    return this.solicitudesService.create(dto, paths, usuarioId ?? undefined);
+    return this.solicitudesService.create(dto, paths, actor);
   }
 
   // =====================================================
@@ -149,14 +157,18 @@ export class SolicitudesController {
     @Param('id', ParseIntPipe) id: number,
     @Body('estadoContadora') estadoContadora: 'VALIDADA' | 'PENDIENTE' | 'DEVUELTA',
     @Body('comentarioContadora') comentarioContadora: string | undefined,
-    @Req() req: Request & { user?: { id?: number; userId?: number } },
+    @Req() req: Request & { user?: { id?: number; userId?: number; email?: string; name?: string } },
   ) {
-    const userId = req.user?.userId ?? req.user?.id ?? undefined;
+    const actor = {
+      userId: req.user?.userId ?? req.user?.id ?? null,
+      email: req.user?.email ?? null,
+      name: req.user?.name ?? null,
+    };
     return this.solicitudesService.validarPorContadora(
       id,
       estadoContadora,
       comentarioContadora ?? null,
-      userId,
+      actor,
     );
   }
 
@@ -189,14 +201,18 @@ export class SolicitudesController {
     @Param('id', ParseIntPipe) id: number,
     @Body('estadoDirector') estadoDirector: 'APROBADA' | 'RECHAZADA',
     @Body('comentarioDirector') comentarioDirector: string | undefined,
-    @Req() req: Request & { user?: { id?: number; userId?: number } },
+    @Req() req: Request & { user?: { id?: number; userId?: number; email?: string; name?: string } },
   ) {
-    const userId = req.user?.userId ?? req.user?.id ?? undefined;
+    const actor = {
+      userId: req.user?.userId ?? req.user?.id ?? null,
+      email: req.user?.email ?? null,
+      name: req.user?.name ?? null,
+    };
     return this.solicitudesService.decisionDirector(
       id,
       estadoDirector,
       comentarioDirector ?? null,
-      userId,
+      actor,
     );
   }
 }

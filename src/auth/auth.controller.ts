@@ -19,21 +19,16 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { Request } from 'express';
-import * as jwt from 'jsonwebtoken';
 
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { SetPasswordDto } from './dto/set-password.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
-import { ConfigService } from '@nestjs/config';
 
 @ApiTags('auth') // agrupa como "auth" en Swagger
 @Controller('auth')
 export class AuthController {
-  constructor(
-    private readonly authService: AuthService,
-    private readonly config: ConfigService,
-  ) {}
+  constructor(private readonly authService: AuthService) {}
 
   // ---------- LOGIN ----------
   @Post('login')
@@ -131,39 +126,8 @@ export class AuthController {
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('bearer')
-  @ApiOperation({ summary: 'Devuelve el usuario del JWT (depuración)' })
+  @ApiOperation({ summary: 'Devuelve el usuario del JWT' })
   me(@Req() req: Request) {
     return { user: req.user };
-  }
-
-  // ---------- Depuración ----------
-  @Get('_echo')
-  @ApiOperation({ summary: 'Echo del header Authorization (sin guard)' })
-  echo(@Req() req: Request) {
-    return { authorization: req.headers['authorization'] || null };
-  }
-
-  @Post('_verify')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Verifica un token manualmente y muestra payload/error' })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: { token: { type: 'string' } },
-      required: ['token'],
-    },
-  })
-  verify(@Body('token') token: string) {
-    const secret =
-      this.config.get<string>('JWT_SECRET') ??
-      this.config.get<string>('PASSWORD_JWT_SECRET') ??
-      'dev-secret';
-
-    try {
-      const payload = jwt.verify(token, secret);
-      return { ok: true, payload };
-    } catch (e: any) {
-      return { ok: false, name: e?.name, message: e?.message };
-    }
   }
 }

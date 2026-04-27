@@ -8,6 +8,7 @@ import { CreatePresupuestoDto, UpdatePresupuestoDto } from './dto/create-presupu
 import { JwtAuthGuard } from '../../../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../../../common/guards/permissions.guard';
 import { Permissions } from '../../../common/decorators/permissions.decorator';
+import { Audit } from '../../auditoria/audit.decorator';
 
 @ApiTags('Contabilidad - Presupuestos')
 @ApiBearerAuth('bearer')
@@ -19,6 +20,14 @@ export class PresupuestosController {
 
   @Post()
   @ApiResponse({ status: 201, description: 'Creado' })
+  @Audit({
+    accion: 'CONTABILIDAD_PRESUPUESTO_CREAR',
+    entidad: 'Presupuesto',
+    resolveDetalle: ({ result }) => {
+      const r = result as any;
+      return `Creó presupuesto ${r?.mes}/${r?.anio} para proyecto #${r?.projectId} por ${r?.montoAsignado ?? '?'}.`;
+    },
+  })
   create(@Body() dto: CreatePresupuestoDto) {
     return this.service.create(dto);
   }
@@ -40,12 +49,22 @@ export class PresupuestosController {
   }
 
   @Patch(':id')
+  @Audit({
+    accion: 'CONTABILIDAD_PRESUPUESTO_EDITAR',
+    entidad: 'Presupuesto',
+    resolveDetalle: ({ params }) => `Editó presupuesto ${params.id}.`,
+  })
   update(@Param('id') id: string, @Body() dto: UpdatePresupuestoDto) {
     return this.service.update(id, dto);
   }
 
   @Delete(':id')
   @HttpCode(204)
+  @Audit({
+    accion: 'CONTABILIDAD_PRESUPUESTO_ELIMINAR',
+    entidad: 'Presupuesto',
+    resolveDetalle: ({ params }) => `Eliminó presupuesto ${params.id}.`,
+  })
   async remove(@Param('id') id: string) {
     await this.service.remove(id);
   }

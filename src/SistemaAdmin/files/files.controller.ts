@@ -9,21 +9,56 @@ import {
   Param,
   Res,
   BadRequestException,
+  NotFoundException,
+  UseGuards,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { FilesService } from './files.service';
 import { Response } from 'express';
-import { join } from 'path';
+import { join, basename, resolve } from 'path';
 import * as fs from 'fs';
+import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
+
+/**
+ * Sanitiza un nombre de archivo solicitado por el cliente.
+ * Previene path traversal (../, /etc/passwd, etc.) usando `basename`.
+ */
+function safeFilename(raw: string): string {
+  const clean = basename(raw || '').trim();
+  if (!clean || clean === '.' || clean === '..' || clean.includes('\0')) {
+    throw new BadRequestException('Nombre de archivo inválido');
+  }
+  return clean;
+}
+
+/**
+ * Busca un archivo dentro de `uploadsDir` sólo en las subcarpetas permitidas.
+ * Verifica que la ruta resuelta quede siempre DENTRO de `uploadsDir` (defensa
+ * en profundidad contra enlaces simbólicos).
+ */
+function findAllowedPath(uploadsDir: string, filename: string): string | null {
+  const allowedDirs = ['', 'projects', 'projects/docs', 'accounting', 'solicitudes', 'billing'];
+  const root = resolve(uploadsDir);
+
+  for (const sub of allowedDirs) {
+    const candidate = resolve(join(uploadsDir, sub, filename));
+    if (!candidate.startsWith(root)) continue; // traversal check
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+      return candidate;
+    }
+  }
+  return null;
+}
 
 @Controller('files')
 export class FilesController {
   constructor(private readonly filesService: FilesService) {}
 
   // ================================================================
-  // 🟢 SUBIR ARCHIVO
+  // 🟢 SUBIR ARCHIVO (requiere JWT)
   // ================================================================
   @Post('upload')
+  @UseGuards(JwtAuthGuard)
   @UseInterceptors(FileInterceptor('file'))
   async uploadFile(@UploadedFile() file: Express.Multer.File) {
     if (!file) throw new BadRequestException('Archivo requerido (file)');
@@ -31,9 +66,10 @@ export class FilesController {
   }
 
   // ================================================================
-  // 🔴 ELIMINAR ARCHIVO
+  // 🔴 ELIMINAR ARCHIVO (requiere JWT)
   // ================================================================
   @Delete('delete')
+  @UseGuards(JwtAuthGuard)
   async deleteFile(@Body('url') url: string) {
     return this.filesService.deleteFile(url);
   }
@@ -42,90 +78,66 @@ export class FilesController {
   // 🔍 INFO ARCHIVO
   // ================================================================
   @Get('info/:filename')
+  @UseGuards(JwtAuthGuard)
   async getFileInfo(@Param('filename') filename: string) {
-    const fileUrl = `/uploads/${filename}`;
-    return this.filesService.getFileInfo(fileUrl);
+    const safe = safeFilename(filename);
+    return this.filesService.getFileInfo(`/uploads/${safe}`);
   }
 
   // ================================================================
   // 📥 DESCARGAR ARCHIVO
   // ================================================================
   @Get('download/:filename')
+  @UseGuards(JwtAuthGuard)
   async downloadFile(
     @Param('filename') filename: string,
     @Res() res: Response,
   ) {
-    try {
-      // Busca el archivo en múltiples rutas posibles
-      const uploadsDir = join(process.cwd(), 'uploads');
-      const possiblePaths = [
-        join(uploadsDir, filename),
-        join(uploadsDir, 'projects', filename),
-        join(uploadsDir, 'projects', 'docs', filename),
-      ];
+    const safe = safeFilename(filename);
+    const uploadsDir = join(process.cwd(), 'uploads');
+    const existingPath = findAllowedPath(uploadsDir, safe);
 
-      const existingPath = possiblePaths.find((p) => fs.existsSync(p));
-
-      if (!existingPath) {
-        return res.status(404).json({ message: 'Archivo no encontrado' });
-      }
-
-      res.set({
-        'Content-Disposition': `attachment; filename="${filename}"`,
-        'Content-Type': 'application/octet-stream',
-      });
-
-      const fileStream = fs.createReadStream(existingPath);
-      fileStream.pipe(res);
-    } catch (error) {
-      console.error('❌ Error al descargar archivo:', error);
-      res.status(500).json({ message: 'Error al descargar archivo' });
+    if (!existingPath) {
+      throw new NotFoundException('Archivo no encontrado');
     }
+
+    res.set({
+      'Content-Disposition': `attachment; filename="${encodeURIComponent(safe)}"`,
+      'Content-Type': 'application/octet-stream',
+    });
+    fs.createReadStream(existingPath).pipe(res);
   }
 
   // ================================================================
   // 👁️ PREVISUALIZAR ARCHIVO
   // ================================================================
   @Get('preview/:filename')
+  @UseGuards(JwtAuthGuard)
   async previewFile(@Param('filename') filename: string, @Res() res: Response) {
-    try {
-      // Busca el archivo en múltiples rutas posibles
-      const uploadsDir = join(process.cwd(), 'uploads');
-      const possiblePaths = [
-        join(uploadsDir, filename),
-        join(uploadsDir, 'projects', filename),
-        join(uploadsDir, 'projects', 'docs', filename),
-      ];
+    const safe = safeFilename(filename);
+    const uploadsDir = join(process.cwd(), 'uploads');
+    const existingPath = findAllowedPath(uploadsDir, safe);
 
-      const existingPath = possiblePaths.find((p) => fs.existsSync(p));
-
-      if (!existingPath) {
-        return res.status(404).json({ message: 'Archivo no encontrado' });
-      }
-
-      // Detectar tipo MIME según extensión
-      const ext = filename.split('.').pop()?.toLowerCase();
-      const mimeTypes: Record<string, string> = {
-        pdf: 'application/pdf',
-        jpg: 'image/jpeg',
-        jpeg: 'image/jpeg',
-        png: 'image/png',
-        gif: 'image/gif',
-        txt: 'text/plain',
-      };
-
-      const contentType = mimeTypes[ext ?? ''] || 'application/octet-stream';
-
-      res.set({
-        'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=3600',
-      });
-
-      const fileStream = fs.createReadStream(existingPath);
-      fileStream.pipe(res);
-    } catch (error) {
-      console.error('❌ Error al previsualizar archivo:', error);
-      res.status(500).json({ message: 'Error al previsualizar archivo' });
+    if (!existingPath) {
+      throw new NotFoundException('Archivo no encontrado');
     }
+
+    const ext = safe.split('.').pop()?.toLowerCase();
+    const mimeTypes: Record<string, string> = {
+      pdf: 'application/pdf',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      png: 'image/png',
+      gif: 'image/gif',
+      webp: 'image/webp',
+      txt: 'text/plain; charset=utf-8',
+    };
+    const contentType = mimeTypes[ext ?? ''] || 'application/octet-stream';
+
+    res.set({
+      'Content-Type': contentType,
+      'Cache-Control': 'private, max-age=300',
+    });
+    fs.createReadStream(existingPath).pipe(res);
   }
 }

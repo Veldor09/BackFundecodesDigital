@@ -19,11 +19,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   private readonly logger = new Logger(JwtStrategy.name);
 
   constructor(private readonly config: ConfigService) {
-    const secret = config.get<string>('JWT_SECRET') ?? 'dev-secret';
-    const safePreview =
-      typeof secret === 'string' && secret.length >= 4
-        ? `${secret.slice(0, 2)}***${secret.slice(-2)}`
-        : '(short/empty)';
+    const secret = config.get<string>('JWT_SECRET');
+    if (!secret || secret.length < 32) {
+      throw new Error(
+        '[AUTH] JWT_SECRET no definido o demasiado corto (mín. 32 chars).',
+      );
+    }
 
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -31,9 +32,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       secretOrKey: secret,
     });
 
-    this.logger.debug(
-      `JwtStrategy init. JWT_SECRET len=${secret?.length ?? 0} preview=${safePreview}`,
-    );
+    // No imprimimos preview del secret en producción para no filtrar pistas por logs.
+    if (config.get<string>('NODE_ENV') !== 'production') {
+      this.logger.debug(`JwtStrategy init. JWT_SECRET len=${secret.length}`);
+    }
   }
 
   async validate(payload: JwtPayload) {

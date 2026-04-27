@@ -8,6 +8,7 @@ import { CreateTransaccionDto, UpdateTransaccionDto } from './dto/create-transac
 import { JwtAuthGuard } from '../../../auth/jwt-auth.guard'
 import { PermissionsGuard } from '../../../common/guards/permissions.guard'
 import { Permissions } from '../../../common/decorators/permissions.decorator'
+import { Audit } from '../../auditoria/audit.decorator'
 
 @ApiTags('Contabilidad - Transacciones')
 @ApiBearerAuth('bearer')
@@ -18,6 +19,14 @@ export class TransaccionesController {
   constructor(private service: TransaccionesService) {}
 
   @Post()
+  @Audit({
+    accion: 'CONTABILIDAD_TRANSACCION_CREAR',
+    entidad: 'Transaccion',
+    resolveDetalle: ({ result }) => {
+      const r = result as any;
+      return `Registró ${r?.tipo ?? '?'} de ${r?.moneda ?? 'CRC'} ${r?.monto ?? '?'} en proyecto #${r?.projectId} (${r?.categoria ?? ''}).`;
+    },
+  })
   create(@Body() dto: CreateTransaccionDto) {
     return this.service.create(dto)
   }
@@ -44,12 +53,22 @@ export class TransaccionesController {
   }
 
   @Patch(':id')
+  @Audit({
+    accion: 'CONTABILIDAD_TRANSACCION_EDITAR',
+    entidad: 'Transaccion',
+    resolveDetalle: ({ params }) => `Editó transacción ${params.id}.`,
+  })
   update(@Param('id') id: string, @Body() dto: UpdateTransaccionDto) {
     return this.service.update(id, dto)
   }
 
   @Delete(':id')
   @HttpCode(204)
+  @Audit({
+    accion: 'CONTABILIDAD_TRANSACCION_ELIMINAR',
+    entidad: 'Transaccion',
+    resolveDetalle: ({ params }) => `Eliminó transacción ${params.id}.`,
+  })
   async remove(@Param('id') id: string) {
     await this.service.remove(id)
   }

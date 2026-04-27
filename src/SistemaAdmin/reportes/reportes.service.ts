@@ -58,18 +58,87 @@ export class ReportesService {
     const key = modulo.toLowerCase().trim();
     try {
       if (['project', 'projects'].includes(key))
-        return this.prisma.project.findMany({ where: { createdAt: { gte: start, lte: end } } });
+        return this.prisma.project.findMany({
+          where: { createdAt: { gte: start, lte: end } },
+        });
+
       if (['billing', 'facturacion'].includes(key))
-        return this.prisma.billingRequest.findMany({ where: { createdAt: { gte: start, lte: end } } });
+        return this.prisma.billingRequest.findMany({
+          where: { createdAt: { gte: start, lte: end } },
+        });
+
       if (['solicitud', 'solicitudes'].includes(key))
-        return this.prisma.solicitudCompra.findMany({ where: { createdAt: { gte: start, lte: end } } });
+        return this.prisma.solicitudCompra.findMany({
+          where: { createdAt: { gte: start, lte: end } },
+          include: {
+            usuario: { select: { id: true, name: true, email: true } },
+            programa: { select: { id: true, nombre: true } },
+            project: { select: { id: true, title: true } },
+          },
+        });
+
       if (['collaborator', 'collaborators', 'colaborador', 'colaboradores'].includes(key))
-        return this.prisma.collaborator.findMany({ where: { createdAt: { gte: start, lte: end } } });
+        return this.prisma.collaborator.findMany({
+          where: { createdAt: { gte: start, lte: end } },
+        });
+
       if (['volunteer', 'volunteers', 'voluntario', 'voluntarios'].includes(key)) {
-        const repo: any = (this.prisma as any).volunteer ?? (this.prisma as any).voluntario;
-        if (!repo) return [];
-        return repo.findMany({ where: { createdAt: { gte: start, lte: end } } });
+        return this.prisma.voluntario.findMany({
+          where: { createdAt: { gte: start, lte: end } },
+          include: {
+            programas: {
+              include: { programa: { select: { id: true, nombre: true, lugar: true } } },
+            },
+          },
+        });
       }
+
+      // 🆕 Programas de voluntariado: incluyen total de voluntarios asignados
+      // y horas acumuladas, datos clave para rendir cuentas en reuniones.
+      if (['programa', 'programas', 'program', 'programs'].includes(key)) {
+        const programas = await this.prisma.programaVoluntariado.findMany({
+          where: { createdAt: { gte: start, lte: end } },
+          include: {
+            voluntarios: {
+              select: {
+                voluntarioId: true,
+                horasTotales: true,
+                pagoRealizado: true,
+                origen: true,
+                voluntario: { select: { id: true, nombreCompleto: true } },
+              },
+            },
+            _count: { select: { voluntarios: true } },
+          },
+        });
+        return programas.map((p) => ({
+          ...p,
+          // Campo derivado consumible por el FE/PDF.
+          totalVoluntarios: p._count.voluntarios,
+          totalHoras: p.voluntarios.reduce((acc, a) => acc + (a.horasTotales ?? 0), 0),
+        }));
+      }
+
+      // 🆕 Sanciones a voluntarios: útil para reportar disciplina.
+      if (['sancion', 'sanciones'].includes(key)) {
+        return this.prisma.sancion.findMany({
+          where: { createdAt: { gte: start, lte: end } },
+          include: {
+            voluntario: { select: { id: true, nombreCompleto: true } },
+          },
+        });
+      }
+
+      // 🆕 Contabilidad: agregamos transacciones (ingresos/egresos) por proyecto.
+      if (['contabilidad', 'transacciones', 'transactions'].includes(key)) {
+        return this.prisma.transaccion.findMany({
+          where: { fecha: { gte: start, lte: end } },
+          include: {
+            project: { select: { id: true, title: true } },
+          },
+        });
+      }
+
       return [];
     } catch (err) {
       console.error(`❌ Error obteniendo datos del módulo "${modulo}":`, err);
@@ -141,6 +210,12 @@ export class ReportesService {
         ? 'Voluntarios'
         : modulo === 'solicitudes'
         ? 'Solicitudes'
+        : modulo === 'programas'
+        ? 'Programas de voluntariado'
+        : modulo === 'sanciones'
+        ? 'Sanciones'
+        : modulo === 'contabilidad'
+        ? 'Contabilidad (transacciones)'
         : modulo.charAt(0).toUpperCase() + modulo.slice(1);
     doc.text(`   • ${nombreModulo}: ${detalle.total} registro${detalle.total !== 1 ? 's' : ''}`);
   }

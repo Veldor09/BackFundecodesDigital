@@ -23,6 +23,7 @@ import { ContabilidadModule } from './SistemaAdmin/contabilidad/contabilidad.mod
 import { BillingModule } from './SistemaAdmin/billing/billing.module';
 import { ReportesModule } from './SistemaAdmin/reportes/reportes.module';
 import { ProgramaVoluntariadoModule } from './SistemaAdmin/ProgramaVoluntariado/programa-voluntariado.module';
+import { AuditoriaModule } from './SistemaAdmin/auditoria/auditoria.module';
 
 // Público
 import { NewsModule } from './news/news.module';
@@ -62,12 +63,16 @@ import { AppService } from './app.service';
         FRONTEND_SET_PASSWORD_PATH: Joi.string().default('/set-password'),
         FRONTEND_RESET_PASSWORD_PATH: Joi.string().default('/reset-password'),
 
-        // --- JWTs ---
-        PASSWORD_JWT_SECRET: Joi.string().min(16).required(),
+        // --- JWTs (REQUERIDOS, mín. 32 chars en producción) ---
+        JWT_SECRET: Joi.string().min(32).required(),
+        JWT_EXPIRES: Joi.alternatives().try(Joi.number(), Joi.string()).default('1d'),
+        PASSWORD_JWT_SECRET: Joi.string().min(32).required(),
         PASSWORD_JWT_EXPIRES: Joi.alternatives().try(Joi.number(), Joi.string()).default('30m'),
-        JWT_SECRET: Joi.string().default('dev-secret'),
-        RESET_JWT_SECRET: Joi.string().min(16).required(),
+        RESET_JWT_SECRET: Joi.string().min(32).required(),
         RESET_JWT_EXPIRES: Joi.alternatives().try(Joi.number(), Joi.string()).default('30m'),
+
+        // --- CORS adicional ---
+        CORS_ALLOWED_ORIGINS: Joi.string().allow('').default(''),
 
         // --- Email ---
         MAIL_HOST: Joi.string().default('smtp.mailersend.net'),
@@ -107,6 +112,7 @@ import { AppService } from './app.service';
     BillingModule,
     ReportesModule,
     ProgramaVoluntariadoModule,
+    AuditoriaModule,
 
     // Público
     NewsModule,
