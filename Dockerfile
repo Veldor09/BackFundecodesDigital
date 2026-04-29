@@ -23,8 +23,12 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
 
-# Reinstalamos SÓLO prod para la imagen final (reduce tamaño y superficie)
-RUN npm prune --omit=dev
+# Reinstalamos SÓLO prod para la imagen final (reduce tamaño y superficie),
+# pero MANTENEMOS el CLI de `prisma` porque el runtime lo necesita para
+# ejecutar `prisma migrate deploy` en el arranque (ver CMD del runner).
+# Fijamos la versión exacta para que coincida con @prisma/client ya instalado.
+RUN npm prune --omit=dev \
+ && npm install --no-save prisma@6.19.2
 
 # ---------- Stage 3: runtime ----------
 FROM node:20-alpine AS runner
@@ -55,5 +59,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 # tini se encarga de PID 1 y señales (ctrl-c / docker stop limpio)
 ENTRYPOINT ["/sbin/tini", "--"]
 
-# Aplica migraciones y arranca la app
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
+# Aplica migraciones y arranca la app.
+# Usamos el binario local de prisma (./node_modules/.bin/prisma) explícitamente
+# para evitar que npx intente descargar otra versión.
+CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && node dist/main.js"]

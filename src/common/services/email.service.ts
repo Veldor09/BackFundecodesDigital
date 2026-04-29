@@ -1,7 +1,19 @@
 // src/common/services/email.service.ts
+//
+// EmailService — implementación con Resend (https://resend.com).
+//
+// Razón de la migración: el plan gratuito de Mailjet expiró tras los 30 días
+// de prueba. Resend ofrece 3.000 correos/mes gratis, sin tarjeta, con un SDK
+// más simple y mejor entregabilidad para correos transaccionales como los
+// nuestros (welcome, reset-password, notificaciones a contadora/director).
+//
+// Las firmas públicas (sendWelcomeSetPasswordEmail, sendResetPasswordEmail,
+// sendMail) NO cambian — el resto del backend sigue funcionando sin tocar
+// una sola línea adicional.
+
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import Mailjet from 'node-mailjet';
+import { Resend } from 'resend';
 import { PrismaService } from '../../prisma/prisma.service';
 
 type EmailLogStatus = 'PENDING' | 'RETRYING' | 'SENT' | 'FAILED';
@@ -11,8 +23,8 @@ const MAX_ATTEMPTS = 3;
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
 
-  // Cliente Mailjet (tipado como any para evitar broncas de TS)
-  private mailjet?: any;
+  /** Cliente Resend (undefined si la API key está vacía). */
+  private resend?: Resend;
 
   // Config
   private readonly from: string;
@@ -29,12 +41,14 @@ export class EmailService {
     this.sendEmails =
       (this.config.get<string>('SEND_EMAILS') ?? 'true').toLowerCase() === 'true';
 
-    // Remitente
+    // Remitente. Resend exige que el dominio del email esté verificado en su
+    // panel; mientras se verifica, se puede usar `onboarding@resend.dev`
+    // (sandbox) que solo permite enviar al email del owner de la cuenta.
     this.from =
       this.config.get<string>('MAIL_FROM') ||
-      'Fundecodes <no-reply@test.com>';
+      'Fundecodes <onboarding@resend.dev>';
 
-    // Frontend URLs
+    // Frontend URLs (para construir links de set/reset password)
     this.frontendUrl =
       this.config.get<string>('PUBLIC_FRONTEND_URL') ||
       this.config.get<string>('FRONTEND_URL') ||
@@ -46,22 +60,17 @@ export class EmailService {
     this.resetPasswordPath =
       this.config.get<string>('FRONTEND_RESET_PASSWORD_PATH') || '/reset-password';
 
-    // === Inicializar Mailjet usando el constructor ===
-    const apiKey = this.config.get<string>('MAILJET_API_KEY');
-    const secretKey = this.config.get<string>('MAILJET_SECRET_KEY');
+    // === Inicializar Resend ===
+    const apiKey = this.config.get<string>('RESEND_API_KEY');
 
-    if (!apiKey || !secretKey) {
+    if (!apiKey) {
       this.logger.error(
-        '[MAILJET] MAILJET_API_KEY o MAILJET_SECRET_KEY vacíos. Se simulará el envío.',
+        '[RESEND] RESEND_API_KEY vacía. Se simulará el envío (SEND_EMAILS=false forzado).',
       );
       this.sendEmails = false;
     } else {
-      // Mailjet es una clase; la instanciamos con apiKey / apiSecret
-      this.mailjet = new (Mailjet as any)({
-        apiKey,
-        apiSecret: secretKey,
-      });
-      this.logger.log('[MAILJET] Cliente inicializado correctamente');
+      this.resend = new Resend(apiKey);
+      this.logger.log('[RESEND] Cliente inicializado correctamente.');
     }
   }
 
@@ -109,8 +118,8 @@ export class EmailService {
     return this.buildLinkWithPath(token, this.resetPasswordPath);
   }
 
-  // ========= Envío vía Mailjet =========
-  private async mailjetSend(
+  // ========= Envío vía Resend =========
+  private async resendSend(
     to: string,
     subject: string,
     text: string,
@@ -124,35 +133,27 @@ export class EmailService {
       return;
     }
 
-    if (!this.mailjet) {
-      throw new Error('Mailjet no inicializado');
+    if (!this.resend) {
+      throw new Error('Resend no inicializado (RESEND_API_KEY vacía).');
     }
 
-    // parsear "Nombre <correo@x.com>"
-    const emailMatch = this.from.match(/<(.+)>/);
-    const nameMatch = this.from.match(/^(.*?)</);
-
-    const fromEmail = emailMatch?.[1]?.trim() || this.from;
-    const fromName = nameMatch?.[1]?.trim() || 'Fundecodes';
-
-    const res = await this.mailjet.post('send', { version: 'v3.1' }).request({
-      Messages: [
-        {
-          From: {
-            Email: fromEmail,
-            Name: fromName,
-          },
-          To: [{ Email: to }],
-          Subject: subject,
-          TextPart: text,
-          HTMLPart: html || text,
-        },
-      ],
+    const result = await this.resend.emails.send({
+      from: this.from,
+      to: [to],
+      subject,
+      text,
+      html: html || text,
     });
 
-    // 🔍 Debug de la respuesta de Mailjet
+    // El SDK de Resend devuelve `{ data, error }` — manejamos ambos.
+    if ((result as any).error) {
+      const err = (result as any).error;
+      const msg = err?.message ?? JSON.stringify(err);
+      throw new Error(`RESEND error: ${msg}`);
+    }
+
     this.logger.debug(
-      `MAILJET RES: ${JSON.stringify(res.body ?? res, null, 2)}`,
+      `[RESEND] Enviado a ${to}. id=${(result as any)?.data?.id ?? '?'}`,
     );
   }
 
@@ -194,14 +195,14 @@ export class EmailService {
             error: msg.slice(0, 1000),
           },
         );
-        this.logger.warn(`[MAILJET] intento ${attempt} falló: ${msg}`);
+        this.logger.warn(`[RESEND] intento ${attempt} falló: ${msg}`);
 
         if (attempt < MAX_ATTEMPTS) {
           await new Promise((r) =>
             setTimeout(r, 500 * Math.pow(2, attempt - 1)),
           );
         } else {
-          throw new BadRequestException(`MAILJET error: ${msg}`);
+          throw new BadRequestException(`RESEND error: ${msg}`);
         }
       }
     }
@@ -238,7 +239,13 @@ export class EmailService {
     });
 
     await this.sendWithRetry(
-      () => this.mailjetSend(to, subject, `Establece tu contraseña: ${link}`, html),
+      () =>
+        this.resendSend(
+          to,
+          subject,
+          `Establece tu contraseña: ${link}`,
+          html,
+        ),
       log.id,
     );
 
@@ -275,7 +282,13 @@ export class EmailService {
     });
 
     await this.sendWithRetry(
-      () => this.mailjetSend(to, subject, `Restablece tu contraseña: ${link}`, html),
+      () =>
+        this.resendSend(
+          to,
+          subject,
+          `Restablece tu contraseña: ${link}`,
+          html,
+        ),
       log.id,
     );
 
@@ -300,7 +313,7 @@ export class EmailService {
     });
 
     await this.sendWithRetry(
-      () => this.mailjetSend(to, subject, text, html),
+      () => this.resendSend(to, subject, text, html),
       log.id,
     );
 
