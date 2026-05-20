@@ -197,7 +197,12 @@ export class BillingService {
   /* ====================== Payments ====================== */
   async createPayment(dto: {
     requestId: number;
-    projectId: number;
+    /**
+     * projectId puede venir vacío/0 cuando la solicitud es para un PROGRAMA:
+     * en ese caso confiamos en el projectId del BillingRequest (que ya fue
+     * resuelto al crearlo desde la solicitud).
+     */
+    projectId?: number;
     date: string;
     amount: number;
     reference: string;
@@ -208,37 +213,54 @@ export class BillingService {
       where: { id: Number(dto.requestId) },
     });
 
-    // 2) Si no existe, lo provisionamos "en caliente" usando el MISMO id
-    //    para mantener la correlación con la Solicitud (front).
+    // 2) Si no existe, lo provisionamos "en caliente". Para esto SÍ
+    //    necesitamos saber a qué proyecto imputarlo: usamos el del dto
+    //    si vino, sino el primer proyecto disponible.
     if (!req) {
       const concept =
         `Auto: pago ${dto.reference?.trim() || ''}`.substring(0, 255) || 'Auto: pago';
       const amount = new Prisma.Decimal(dto.amount ?? 0);
 
-      // IMPORTANTE: insertamos con el id explícito = dto.requestId
+      let resolvedProjectId = Number(dto.projectId);
+      if (!resolvedProjectId || resolvedProjectId <= 0) {
+        const fallback = await this.prisma.project.findFirst({
+          select: { id: true },
+          orderBy: { id: 'asc' },
+        });
+        if (!fallback) {
+          throw new BadRequestException(
+            'No hay proyectos en el sistema y no se envió projectId.',
+          );
+        }
+        resolvedProjectId = fallback.id;
+      }
+
       req = await this.prisma.billingRequest.create({
         data: {
-          id: Number(dto.requestId), // <-- clave para evitar el 404 y mantener el id
-          projectId: Number(dto.projectId),
+          id: Number(dto.requestId),
+          projectId: resolvedProjectId,
           concept,
           amount,
-          status: 'APPROVED', // o el que encaje mejor con tu flujo
+          status: 'APPROVED',
           history: [{ autoProvisioned: true, at: new Date().toISOString() }] as any,
         },
       });
     }
 
-    // 3) Verificación de proyecto coherente
-    if (Number(req.projectId) !== Number(dto.projectId)) {
+    // 3) Verificación de proyecto coherente — solo si el caller envió uno.
+    //    Para solicitudes PROGRAMA el front no envía projectId; en ese caso
+    //    se usa el del BillingRequest sin validar.
+    const dtoProjectIdNum = Number(dto.projectId ?? 0);
+    if (dtoProjectIdNum > 0 && Number(req.projectId) !== dtoProjectIdNum) {
       throw new BadRequestException(
         'El pago no corresponde al mismo proyecto del request',
       );
     }
 
-    // 4) Crear el pago
+    // 4) Crear el pago (siempre con el projectId del BillingRequest)
     const payment = await this.prisma.payment.create({
       data: {
-        requestId: req.id, // usar el id REAL del billingRequest
+        requestId: req.id,
         projectId: req.projectId,
         amount: new Prisma.Decimal(dto.amount),
         currency: dto.currency,
@@ -353,28 +375,67 @@ export class BillingService {
   async createBillingRequestFromSolicitud(solicitudId: number) {
     const solicitud = await this.prisma.solicitudCompra.findUnique({
       where: { id: solicitudId },
-      include: { usuario: true },
+      include: { usuario: true, programa: true, project: true },
     });
 
     if (!solicitud) throw new NotFoundException('Solicitud no encontrada');
     if (solicitud.estadoDirector !== 'APROBADA')
       throw new ForbiddenException('La solicitud no está aprobada por dirección');
 
-    // Evitar duplicados
-    const existing = await this.prisma.billingRequest.findFirst({
-      where: { concept: `Solicitud #${solicitud.id}` },
+    // Evitar duplicados — buscamos por id explícito (la solicitud y el
+    // BillingRequest comparten el mismo id, así el front puede correlacionar).
+    const existing = await this.prisma.billingRequest.findUnique({
+      where: { id: solicitud.id },
     });
-
     if (existing) return existing;
 
-    // Crear uno nuevo
+    // ── Resolver projectId ─────────────────────────────────────────────
+    // - Solicitudes de tipo PROYECTO: usamos el projectId directamente.
+    // - Solicitudes de tipo PROGRAMA: el modelo Payment/BillingRequest
+    //   exige projectId, así que tomamos el primer proyecto del sistema
+    //   como contenedor temporal. (TODO: en una migración futura, hacer
+    //   BillingRequest.projectId opcional + añadir BillingRequest.programaId
+    //   para tener trazabilidad real de pagos a programas.)
+    let projectId = solicitud.projectId ?? null;
+    if (!projectId) {
+      const anyProject = await this.prisma.project.findFirst({
+        select: { id: true },
+        orderBy: { id: 'asc' },
+      });
+      if (!anyProject) {
+        throw new BadRequestException(
+          'No hay proyectos en el sistema; crea al menos uno antes de registrar pagos a programas.',
+        );
+      }
+      projectId = anyProject.id;
+    }
+
+    // Monto: tomamos el que el usuario indicó al crear la solicitud.
+    const amountDecimal = new Prisma.Decimal(solicitud.monto ?? 0);
+
+    // Concept: dejamos pistas legibles del destino real para auditoría.
+    const destinoLabel =
+      solicitud.tipoOrigen === 'PROGRAMA'
+        ? `Programa: ${solicitud.programa?.nombre ?? `#${solicitud.programaId ?? '?'}`}`
+        : `Proyecto: ${solicitud.project?.title ?? `#${solicitud.projectId ?? '?'}`}`;
+
     return this.prisma.billingRequest.create({
       data: {
-        amount: 0, // puedes calcularlo si tienes lógica de monto
-        concept: `Solicitud #${solicitud.id}`,
-        projectId: 1, // <-- puedes inferirlo desde usuario o lógica interna
+        id: solicitud.id, // misma key que el front usa como requestId
+        amount: amountDecimal,
+        concept: `Solicitud #${solicitud.id} — ${destinoLabel}`,
+        projectId,
         status: 'APPROVED',
-        history: [{ fromSolicitud: true, at: new Date().toISOString() }],
+        history: [
+          {
+            fromSolicitud: true,
+            tipoOrigen: solicitud.tipoOrigen,
+            programaId: solicitud.programaId ?? null,
+            projectIdOriginal: solicitud.projectId ?? null,
+            projectIdUsed: projectId,
+            at: new Date().toISOString(),
+          },
+        ] as any,
       },
     });
   }
