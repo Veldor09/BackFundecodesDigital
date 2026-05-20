@@ -190,27 +190,19 @@ export class RespuestasFormularioService {
     }
   }
 
-  /** Validación del formulario de VOLUNTARIADO */
-  private validateVoluntariado(payload: Record<string, any>) {
-    if (
-      !payload.disponibilidad ||
-      typeof payload.disponibilidad !== 'string' ||
-      !payload.disponibilidad.trim()
-    ) {
-      throw new BadRequestException(
-        'La disponibilidad es obligatoria para el formulario de voluntariado',
-      );
-    }
-
-    if (
-      !payload.areaInteres ||
-      typeof payload.areaInteres !== 'string' ||
-      !payload.areaInteres.trim()
-    ) {
-      throw new BadRequestException(
-        'El área de interés es obligatoria para el formulario de voluntariado',
-      );
-    }
+  /**
+   * Validación del formulario de VOLUNTARIADO.
+   *
+   * El form público ya no exige `disponibilidad` ni `areaInteres` (esos
+   * detalles se preguntan después por correo). Lo único que debe llegar
+   * es un payload válido — los datos del contacto (nombre, correo,
+   * teléfono) viven en el nivel superior del DTO, no en el payload.
+   */
+  private validateVoluntariado(_payload: Record<string, any>) {
+    // Si se necesita reintroducir un campo obligatorio en el futuro,
+    // hacerlo aquí. Por ahora basta con que el payload sea un objeto
+    // (lo valida `validatePayloadByFormType` antes de llamar aquí).
+    return;
   }
 
   /** Validación del formulario de ALIANZA */
