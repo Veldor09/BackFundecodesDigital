@@ -7,6 +7,8 @@ import {
   IsNotEmpty,
   IsEnum,
   IsDateString,
+  MaxLength,
+  MinLength,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 
@@ -26,6 +28,8 @@ export class CreateProjectDto {
   @IsString()
   @Transform(({ value }) => trim(value))
   @IsNotEmpty({ message: 'title no puede estar vacío' })
+  @MinLength(3, { message: 'title debe tener al menos 3 caracteres' })
+  @MaxLength(100, { message: 'title no puede exceder 100 caracteres' })
   title!: string;
 
   // opcional: si no viene, se genera desde title + place
