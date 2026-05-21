@@ -13,6 +13,56 @@ enum TipoTransaccion {
   egreso
 }
 
+// ===== NUEVO: Cuenta — contenedor financiero del módulo de Contabilidad =====
+// Los proyectos y programas pueden estar (o no) bajo una cuenta. La cuenta no
+// guarda saldos ni presupuestos propios: sus totales se CALCULAN al vuelo a
+// partir de los proyectos/programas que contiene + las transacciones cuyo
+// snapshot `cuentaId` apunte aquí (esto permite mover un proyecto a otra
+// cuenta sin perder la historia: las transacciones viejas siguen pertene-
+// ciendo a esta cuenta, las nuevas se irán a la cuenta destino).
+model Cuenta {
+  id          Int       @id @default(autoincrement())
+  nombre      String
+  codigo      String    @unique         // consecutivo bancario / identificador único
+  descripcion String?
+  monedaBase  Currency  @default(CRC)
+  activa      Boolean   @default(true)
+
+  proyectos    Project[]
+  programas    ProgramaVoluntariado[]
+  transacciones Transaccion[]
+  billingRequests BillingRequest[]
+  payments        Payment[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([activa])
+}
+
+// ===== NUEVO: ColaboradorAsignacion =====
+// Un colaborador (en particular los de tipo `colaboradorfactura`) solo puede
+// crear solicitudes para proyectos/programas a los que está asignado. Cada
+// fila representa una asignación; un colaborador puede tener varias.
+model ColaboradorAsignacion {
+  id             Int       @id @default(autoincrement())
+  collaboratorId Int
+  projectId      Int?
+  programaId     Int?
+  createdAt      DateTime  @default(now())
+
+  collaborator Collaborator           @relation(fields: [collaboratorId], references: [id], onDelete: Cascade)
+  project      Project?               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  programa     ProgramaVoluntariado?  @relation(fields: [programaId], references: [id], onDelete: Cascade)
+
+  // Cada par colaborador↔destino solo puede existir una vez.
+  @@unique([collaboratorId, projectId])
+  @@unique([collaboratorId, programaId])
+  @@index([collaboratorId])
+  @@index([projectId])
+  @@index([programaId])
+}
+
 model Project {
   id          Int                @id @default(autoincrement())
   title       String
@@ -31,6 +81,16 @@ model Project {
   documents   ProjectDocument[]
   images      ProjectImage[]
 
+  // === Contabilidad ===
+  // Cuenta a la que pertenece actualmente (nullable: puede existir sin cuenta).
+  cuentaId            Int?
+  cuenta              Cuenta?  @relation(fields: [cuentaId], references: [id], onDelete: SetNull)
+  // Presupuesto TOTAL asignado en su cuenta actual. Se reasigna si cambia de
+  // cuenta. El ejecutado NO se almacena: se calcula sumando transacciones
+  // donde `transaccion.cuentaId = project.cuentaId` y `projectId = project.id`.
+  presupuestoTotal    Decimal  @default(0) @db.Decimal(16, 2)
+  monedaPresupuesto   Currency @default(CRC)
+
   presupuestos        Presupuesto[]
   transacciones       Transaccion[]
   documentosContables DocumentoContable[]
@@ -44,9 +104,13 @@ model Project {
   // Solicitudes de compra que apuntan a este proyecto.
   solicitudes        SolicitudCompra[]   @relation("ProjectSolicitudes")
 
+  // Colaboradores asignados a este proyecto.
+  asignaciones       ColaboradorAsignacion[]
+
   @@unique([title, place, area])
   @@index([status])
   @@index([updatedAt])
+  @@index([cuentaId])
 }
 
 model ProjectImage {
@@ -175,6 +239,9 @@ model Collaborator {
   passwordUpdatedAt     DateTime?         @map("password_updated_at")
   tempPasswordExpiresAt DateTime?         @map("temp_password_expires_at")
 
+  // Asignaciones a proyectos/programas (solo relevante para colaboradorfactura)
+  asignaciones ColaboradorAsignacion[]
+
   @@map("colaborador")
 }
 
@@ -275,14 +342,32 @@ model ProgramaVoluntariado {
   createdAt           DateTime                         @default(now())
   updatedAt           DateTime                         @updatedAt
 
+  // === Contabilidad ===
+  // Mismo tratamiento que Project: puede existir sin cuenta y, al asignarse,
+  // su presupuesto vive en la cuenta actual. Histórico de transacciones se
+  // queda en la cuenta donde se generaron (via Transaccion.cuentaId).
+  cuentaId             Int?
+  cuenta               Cuenta?  @relation(fields: [cuentaId], references: [id], onDelete: SetNull)
+  presupuestoTotal     Decimal  @default(0) @db.Decimal(16, 2)
+  monedaPresupuesto    Currency @default(CRC)
+
   // Relación con voluntarios (vía tabla intermedia)
   voluntarios         ProgramaVoluntariadoAsignacion[]
 
   // Solicitudes de compra que apuntan a este programa.
   solicitudes         SolicitudCompra[]
 
+  // Movimientos financieros del programa.
+  transacciones       Transaccion[]
+  billingRequests     BillingRequest[]
+  payments            Payment[]
+
+  // Colaboradores asignados a este programa.
+  asignaciones        ColaboradorAsignacion[]
+
   @@map("programa_voluntariado")
   @@index([nombre])
+  @@index([cuentaId])
 }
 
 
@@ -424,24 +509,52 @@ model Presupuesto {
   @@index([projectId, anio, mes])
 }
 
+// ===== Transaccion (polimorfa: Project XOR Programa) =====
+// Reglas:
+//   • Exactamente UNO de (projectId, programaId) debe estar set — el back lo
+//     valida en TransaccionesService.create.
+//   • `cuentaId` es un SNAPSHOT de la cuenta del destino al momento de crear
+//     la transacción. Si el proyecto/programa cambia de cuenta después, esta
+//     transacción NO se mueve: permanece imputada a la cuenta original. Esto
+//     preserva el histórico contable de cada cuenta intacto.
+//   • Las transacciones NUNCA se borran. Para revertir, se crea una contra-
+//     transacción enlazada por `anulaTransaccionId`. Los campos `anuladaAt` y
+//     `anuladaPor` se setean en la transacción original al ser anulada.
+//   • `paymentId` enlaza la transacción cuando fue generada automáticamente
+//     al pagar una solicitud (egreso). 1:1 con Payment.
 model Transaccion {
   id          String          @id @default(cuid())
-  projectId   Int
-  proyecto    String
+  projectId   Int?
+  programaId  Int?
+  cuentaId    Int?            // snapshot — ver doc del modelo
+  proyecto    String          // título legible del destino al momento del registro
   fecha       DateTime
   tipo        TipoTransaccion
   categoria   String
   descripcion String
   monto       Decimal         @db.Decimal(16, 2)
+  moneda      Currency        @default(CRC)
 
+  // Trazabilidad pago ↔ transacción
+  paymentId   String?         @unique
+  payment     Payment?        @relation(fields: [paymentId], references: [id])
 
-  moneda      Currency @default(CRC)
+  // Auditoría / anulación
+  anuladaAt           DateTime?
+  anuladaPor          Int?
+  anulaTransaccionId  String?     @unique
+  anulaTransaccion    Transaccion? @relation("AnulaTransaccion", fields: [anulaTransaccionId], references: [id])
+  anuladaPorTx        Transaccion? @relation("AnulaTransaccion")
 
   createdAt   DateTime        @default(now())
 
-  project Project @relation(fields: [projectId], references: [id])
+  project   Project?              @relation(fields: [projectId], references: [id])
+  programa  ProgramaVoluntariado? @relation(fields: [programaId], references: [id])
+  cuenta    Cuenta?               @relation(fields: [cuentaId], references: [id])
 
   @@index([projectId, fecha, tipo])
+  @@index([programaId, fecha, tipo])
+  @@index([cuentaId, fecha])
 }
 
 model DocumentoContable {
@@ -476,13 +589,19 @@ enum BillingRequestStatus {
   PAID
 }
 
+// ===== BillingRequest (polimorfa: Project XOR Programa) =====
+// projectId Y programaId son opcionales pero exactamente uno debe estar set.
+// El back lo valida al crear (BillingService.createRequest / from-solicitud).
+// `cuentaId` es snapshot al momento de creación.
 model BillingRequest {
   id              Int                  @id @default(autoincrement())
   amount          Decimal              @db.Decimal(16, 2)
   concept         String
-  projectId       Int
+  projectId       Int?
+  programaId      Int?
+  cuentaId        Int?
   status          BillingRequestStatus @default(PENDING)
-  currency    String   @default("CRC") 
+  currency        String               @default("CRC")
   createdBy       String?
   draftInvoiceUrl String?
   history         Json?
@@ -490,13 +609,17 @@ model BillingRequest {
   // 1:1 inversa (FK en BillingInvoice.requestId)
   invoice BillingInvoice?
 
-  project  Project   @relation(fields: [projectId], references: [id])
+  project  Project?              @relation(fields: [projectId], references: [id])
+  programa ProgramaVoluntariado? @relation(fields: [programaId], references: [id])
+  cuenta   Cuenta?               @relation(fields: [cuentaId], references: [id])
   payments Payment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([projectId])
+  @@index([programaId])
+  @@index([cuentaId])
 }
 
 model BillingInvoice {
@@ -531,20 +654,32 @@ model ProgramAllocation {
   @@index([projectId, date])
 }
 
+// ===== Payment (polimorfo: Project XOR Programa) =====
+// Heredan el destino del BillingRequest (no se acepta una mezcla incoherente).
+// `cuentaId` es snapshot. Cada Payment genera 1 Transaccion de egreso vía
+// el flujo transaccional del BillingService.
 model Payment {
-  id        String   @id @default(cuid())
-  requestId Int
-  projectId Int
-  amount    Decimal  @db.Decimal(16, 2)
-  currency  Currency
-  reference String
-  date      DateTime
+  id         String   @id @default(cuid())
+  requestId  Int
+  projectId  Int?
+  programaId Int?
+  cuentaId   Int?
+  amount     Decimal  @db.Decimal(16, 2)
+  currency   Currency
+  reference  String
+  date       DateTime
 
-  project  Project        @relation(fields: [projectId], references: [id])
-  request  BillingRequest @relation(fields: [requestId], references: [id])
-  receipts Receipt[]
+  project   Project?              @relation(fields: [projectId], references: [id])
+  programa  ProgramaVoluntariado? @relation(fields: [programaId], references: [id])
+  cuenta    Cuenta?               @relation(fields: [cuentaId], references: [id])
+  request   BillingRequest        @relation(fields: [requestId], references: [id])
+  receipts  Receipt[]
+  // 1:1 con la Transaccion de egreso generada automáticamente.
+  transaccion Transaccion?
 
   @@index([projectId, date])
+  @@index([programaId, date])
+  @@index([cuentaId, date])
 }
 
 model Receipt {

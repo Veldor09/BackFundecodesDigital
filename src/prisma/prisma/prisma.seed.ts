@@ -16,17 +16,22 @@ async function main() {
     { key: 'voluntario:access',   description: 'Acceso al módulo de Voluntariado' },
     { key: 'sanciones:access',    description: 'Acceso al módulo de Sanciones' },
     { key: 'projects:access',     description: 'Acceso al módulo de Proyectos' },
+    { key: 'programas:access',    description: 'Acceso al módulo de Programas' },
     { key: 'solicitudes:access',  description: 'Acceso al módulo de Solicitudes' },
     { key: 'facturas:access',     description: 'Acceso al módulo de Facturas' },
     { key: 'contabilidad:access', description: 'Acceso al módulo de Contabilidad' },
+    { key: 'cuentas:access',      description: 'Acceso a las cuentas contables' },
     { key: 'programavoluntariado:access', description: 'Acceso al módulo de Programa Voluntariado' },
     { key: 'reportes:access', description: 'Acceso al módulo de Reportes' },
   ]
   const MANAGE_PERMS = [
-    { key: 'users.manage',    description: 'Gestionar usuarios' },
-    { key: 'roles.manage',    description: 'Gestionar roles y permisos' },
-    { key: 'projects.manage', description: 'Gestionar proyectos' },
-    { key: 'news.manage',     description: 'Gestionar noticias' },
+    { key: 'users.manage',         description: 'Gestionar usuarios' },
+    { key: 'roles.manage',         description: 'Gestionar roles y permisos' },
+    { key: 'projects.manage',      description: 'Gestionar proyectos' },
+    { key: 'programas.manage',     description: 'Gestionar programas' },
+    { key: 'cuentas.manage',       description: 'Gestionar cuentas contables' },
+    { key: 'asignaciones.manage',  description: 'Asignar proyectos/programas a colaboradores' },
+    { key: 'news.manage',          description: 'Gestionar noticias' },
   ]
   const ALL_PERMS = [...MODULE_PERMS, ...MANAGE_PERMS]
 
@@ -38,14 +43,36 @@ async function main() {
     })
   }
 
+  // NOTA: las claves de roles deben coincidir con el enum ColaboradorRol de Prisma.
+  // colaboradorproyecto ahora gestiona tanto proyectos como programas (el módulo
+  // se llama "Proyectos y Programas").
   const ROLE_TO_PERMS: Record<string, string[]> = {
     admin: ALL_PERMS.map(p => p.key),
     voluntario: ['voluntario:access'],
-    colaboradorfacturas: ['facturas:access','solicitudes:access'],
-    colaboradorvoluntariado: ['voluntario:access','sanciones:access','programavoluntariado:access'],
-    colaboradorproyecto: ['projects:access'],
-    colaboradorcontabilidad: ['contabilidad:access','solicitudes:access','facturas:access'],
-    colaboradorvoluntario: ['voluntario:access','sanciones:access','programavoluntariado:access'],
+    colaboradorfacturas: [
+      'facturas:access',
+      'solicitudes:access',
+    ],
+    colaboradorvoluntariado: [
+      'voluntario:access',
+      'sanciones:access',
+      'programavoluntariado:access',
+    ],
+    colaboradorproyecto: [
+      'projects:access',
+      'programas:access',
+    ],
+    colaboradorcontabilidad: [
+      'contabilidad:access',
+      'cuentas:access',
+      'solicitudes:access',
+      'facturas:access',
+    ],
+    colaboradorvoluntario: [
+      'voluntario:access',
+      'sanciones:access',
+      'programavoluntariado:access',
+    ],
   }
 
   for (const [name, keys] of Object.entries(ROLE_TO_PERMS)) {
