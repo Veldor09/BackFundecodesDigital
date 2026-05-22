@@ -20,6 +20,7 @@ import { VolunteerModule } from './SistemaAdmin/Volunteer/volunteer.module';
 import { SancionesModule } from './SistemaAdmin/sanciones/sanciones.module';
 import { SolicitudesModule } from './SistemaAdmin/solicitudes/solicitudes.module';
 import { ContabilidadModule } from './SistemaAdmin/contabilidad/contabilidad.module';
+import { CuentasModule } from './SistemaAdmin/cuentas/cuentas.module';
 import { BillingModule } from './SistemaAdmin/billing/billing.module';
 import { ReportesModule } from './SistemaAdmin/reportes/reportes.module';
 import { ProgramaVoluntariadoModule } from './SistemaAdmin/ProgramaVoluntariado/programa-voluntariado.module';
@@ -109,6 +110,7 @@ import { AppService } from './app.service';
     SancionesModule,
     SolicitudesModule,
     ContabilidadModule,
+    CuentasModule,
     BillingModule,
     ReportesModule,
     ProgramaVoluntariadoModule,

@@ -110,7 +110,11 @@ export class BillingService {
   }
 
   async upsertFinalInvoiceFromJson(
-    req: { id: number; projectId: number; concept: string; amount: Prisma.Decimal },
+    // Aceptamos projectId nullable porque BillingRequest ya soporta solicitudes
+    // de PROGRAMA (sin projectId). Si llega null, abortamos con error claro:
+    // BillingInvoice todavía requiere projectId y la migración a polimórfica
+    // está prevista para una fase posterior.
+    req: { id: number; projectId: number | null; concept: string; amount: Prisma.Decimal },
     input: {
       number: string;
       date: string;
@@ -120,6 +124,12 @@ export class BillingService {
       conceptOverride?: string;
     },
   ) {
+    if (req.projectId === null || req.projectId === undefined) {
+      throw new BadRequestException(
+        'Esta solicitud está asociada a un programa. La facturación formal para programas se habilitará en una fase futura.',
+      );
+    }
+
     this.assertInvoiceAgainstRequest({
       req,
       invoice: {
@@ -414,16 +424,22 @@ export class BillingService {
     const amountDecimal = new Prisma.Decimal(solicitud.monto ?? 0);
 
     // Concept: dejamos pistas legibles del destino real para auditoría.
-    const destinoLabel =
-      solicitud.tipoOrigen === 'PROGRAMA'
-        ? `Programa: ${solicitud.programa?.nombre ?? `#${solicitud.programaId ?? '?'}`}`
-        : `Proyecto: ${solicitud.project?.title ?? `#${solicitud.projectId ?? '?'}`}`;
+    let destinoLabel: string;
+    if (solicitud.tipoOrigen === 'PROGRAMA') {
+      const nombre =
+        solicitud.programa?.nombre ?? '#' + (solicitud.programaId ?? '?');
+      destinoLabel = 'Programa: ' + nombre;
+    } else {
+      const titulo =
+        solicitud.project?.title ?? '#' + (solicitud.projectId ?? '?');
+      destinoLabel = 'Proyecto: ' + titulo;
+    }
 
     return this.prisma.billingRequest.create({
       data: {
-        id: solicitud.id, // misma key que el front usa como requestId
+        id: solicitud.id,
         amount: amountDecimal,
-        concept: `Solicitud #${solicitud.id} — ${destinoLabel}`,
+        concept: 'Solicitud #' + solicitud.id + ' — ' + destinoLabel,
         projectId,
         status: 'APPROVED',
         history: [
