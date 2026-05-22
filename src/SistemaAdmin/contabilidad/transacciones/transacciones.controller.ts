@@ -1,14 +1,26 @@
-// src/SistemaAdmin/contabilidad/transacciones/transacciones.controller.ts
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query, HttpCode, UseGuards } from '@nestjs/common'
-import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger'
-import { TransaccionesService } from './transacciones.service'
-import { CreateTransaccionDto, UpdateTransaccionDto } from './dto/create-transaccion.dto'
-
-// ⬇️ Ajusta las rutas si tu árbol difiere
-import { JwtAuthGuard } from '../../../auth/jwt-auth.guard'
-import { PermissionsGuard } from '../../../common/guards/permissions.guard'
-import { Permissions } from '../../../common/decorators/permissions.decorator'
-import { Audit } from '../../auditoria/audit.decorator'
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  ParseIntPipe,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import { Request } from 'express';
+import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { TransaccionesService } from './transacciones.service';
+import {
+  CreateTransaccionDto,
+  AnularTransaccionDto,
+} from './dto/create-transaccion.dto';
+import { JwtAuthGuard } from '../../../auth/jwt-auth.guard';
+import { PermissionsGuard } from '../../../common/guards/permissions.guard';
+import { Permissions } from '../../../common/decorators/permissions.decorator';
+import { Audit } from '../../auditoria/audit.decorator';
 
 @ApiTags('Contabilidad - Transacciones')
 @ApiBearerAuth('bearer')
@@ -24,52 +36,84 @@ export class TransaccionesController {
     entidad: 'Transaccion',
     resolveDetalle: ({ result }) => {
       const r = result as any;
-      return `Registró ${r?.tipo ?? '?'} de ${r?.moneda ?? 'CRC'} ${r?.monto ?? '?'} en proyecto #${r?.projectId} (${r?.categoria ?? ''}).`;
+      const destino = r?.projectId
+        ? `proyecto #${r.projectId}`
+        : `programa #${r.programaId}`;
+      return `Registró ${r?.tipo ?? '?'} de ${r?.moneda ?? 'CRC'} ${r?.monto ?? '?'} en ${destino} (${r?.categoria ?? ''}).`;
     },
   })
   create(@Body() dto: CreateTransaccionDto) {
-    return this.service.create(dto)
+    return this.service.create(dto);
   }
 
   @Get()
   @ApiQuery({ name: 'projectId', required: false, type: Number })
+  @ApiQuery({ name: 'programaId', required: false, type: Number })
+  @ApiQuery({ name: 'cuentaId', required: false, type: Number })
   @ApiQuery({ name: 'tipo', required: false, enum: ['ingreso', 'egreso'] })
   @ApiQuery({ name: 'categoria', required: false })
   @ApiQuery({ name: 'fechaInicio', required: false, description: 'YYYY-MM-DD' })
   @ApiQuery({ name: 'fechaFin', required: false, description: 'YYYY-MM-DD' })
-  @ApiQuery({ name: 'moneda', required: false, enum: ['CRC','USD','EUR'] })
+  @ApiQuery({ name: 'moneda', required: false, enum: ['CRC', 'USD', 'EUR'] })
+  @ApiQuery({ name: 'incluirAnuladas', required: false, type: Boolean })
   findAll(
     @Query('projectId') projectId?: string,
+    @Query('programaId') programaId?: string,
+    @Query('cuentaId') cuentaId?: string,
     @Query('tipo') tipo?: 'ingreso' | 'egreso',
     @Query('categoria') categoria?: string,
     @Query('fechaInicio') fechaInicio?: string,
     @Query('fechaFin') fechaFin?: string,
     @Query('moneda') moneda?: 'CRC' | 'USD' | 'EUR',
+    @Query('incluirAnuladas') incluirAnuladas?: string,
   ) {
     return this.service.findAll({
       projectId: projectId ? Number(projectId) : undefined,
-      tipo, categoria, fechaInicio, fechaFin, moneda,
-    })
+      programaId: programaId ? Number(programaId) : undefined,
+      cuentaId: cuentaId ? Number(cuentaId) : undefined,
+      tipo,
+      categoria,
+      fechaInicio,
+      fechaFin,
+      moneda,
+      incluirAnuladas: incluirAnuladas === 'true',
+    });
   }
 
-  @Patch(':id')
+  @Get('saldo/proyecto/:id')
   @Audit({
-    accion: 'CONTABILIDAD_TRANSACCION_EDITAR',
-    entidad: 'Transaccion',
-    resolveDetalle: ({ params }) => `Editó transacción ${params.id}.`,
+    accion: 'CONTABILIDAD_SALDO_PROYECTO',
+    entidad: 'Proyecto',
+    resolveDetalle: ({ params }) => `Consultó saldo de proyecto #${params.id}.`,
   })
-  update(@Param('id') id: string, @Body() dto: UpdateTransaccionDto) {
-    return this.service.update(id, dto)
+  saldoProyecto(@Param('id', ParseIntPipe) id: number) {
+    return this.service.saldoProyecto(id);
   }
 
-  @Delete(':id')
-  @HttpCode(204)
+  @Get('saldo/programa/:id')
   @Audit({
-    accion: 'CONTABILIDAD_TRANSACCION_ELIMINAR',
-    entidad: 'Transaccion',
-    resolveDetalle: ({ params }) => `Eliminó transacción ${params.id}.`,
+    accion: 'CONTABILIDAD_SALDO_PROGRAMA',
+    entidad: 'ProgramaVoluntariado',
+    resolveDetalle: ({ params }) => `Consultó saldo de programa #${params.id}.`,
   })
-  async remove(@Param('id') id: string) {
-    await this.service.remove(id)
+  saldoPrograma(@Param('id', ParseIntPipe) id: number) {
+    return this.service.saldoPrograma(id);
+  }
+
+  @Post(':id/anular')
+  @HttpCode(200)
+  @Audit({
+    accion: 'CONTABILIDAD_TRANSACCION_ANULAR',
+    entidad: 'Transaccion',
+    resolveDetalle: ({ params, body }) =>
+      `Anuló transacción ${params.id}. Motivo: ${(body as any)?.motivo ?? '—'}.`,
+  })
+  anular(
+    @Param('id') id: string,
+    @Body() dto: AnularTransaccionDto,
+    @Req() req: Request & { user?: { id?: number; userId?: number } },
+  ) {
+    const userId = req.user?.userId ?? req.user?.id ?? undefined;
+    return this.service.anular(id, dto.motivo, userId);
   }
 }

@@ -190,6 +190,44 @@ async addImage(
     });
   }
 
+  // ===================== SALDO =====================
+
+  async saldo(projectId: number) {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: { id: true, title: true, presupuestoTotal: true, monedaPresupuesto: true, cuentaId: true },
+    });
+    if (!project) throw new NotFoundException('Proyecto no encontrado');
+
+    const agg = await this.prisma.transaccion.groupBy({
+      by: ['tipo'],
+      where: { projectId, anuladaAt: null },
+      _sum: { monto: true },
+    });
+
+    const toNum = (v: any) => (v ? Number(v.toString()) : 0);
+    const presupuesto = toNum(project.presupuestoTotal);
+    const ingresos = toNum(agg.find((g: any) => g.tipo === 'ingreso')?._sum?.monto);
+    const egresos = toNum(agg.find((g: any) => g.tipo === 'egreso')?._sum?.monto);
+    const disponible = presupuesto + ingresos - egresos;
+    const efectivo = presupuesto + ingresos;
+    const porcentajeUtilizado = efectivo > 0
+      ? Math.min(100, (egresos / efectivo) * 100)
+      : 0;
+
+    return {
+      id: project.id,
+      nombre: project.title,
+      moneda: project.monedaPresupuesto,
+      presupuestoTotal: presupuesto,
+      ingresos,
+      egresos,
+      ejecutado: egresos,
+      disponible,
+      porcentajeUtilizado: Number(porcentajeUtilizado.toFixed(2)),
+    };
+  }
+
   // ===================== HELPERS =====================
 
   private async safeDeleteFromStorage(urlOrKey: string) {

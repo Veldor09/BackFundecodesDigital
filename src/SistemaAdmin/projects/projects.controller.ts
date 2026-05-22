@@ -19,6 +19,7 @@ import {
 import {
   ApiBody,
   ApiConsumes,
+  ApiOperation,
   ApiParam,
   ApiQuery,
   ApiTags,
@@ -131,6 +132,13 @@ async get(
   })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateProjectDto) {
     return this.service.update(id, dto);
+  }
+
+  // -------------------- SALDO --------------------
+  @Get(':id/saldo')
+  @ApiOperation({ summary: 'Saldo actual del proyecto (presupuesto, ejecutado, disponible)' })
+  saldo(@Param('id', ParseIntPipe) id: number) {
+    return this.service.saldo(id);
   }
 
   // -------------------- ELIMINAR --------------------

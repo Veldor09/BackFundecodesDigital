@@ -520,4 +520,164 @@ export class CollaboratorsService {
       },
     });
   }
+
+  // =================== Asignaciones (ColaboradorAsignacion) ===================
+  // Solo aplica para rol colaboradorfactura. Controla a qué proyectos/programas
+  // puede referir el colaborador al crear solicitudes de pago.
+
+  /** Lista las asignaciones vigentes del colaborador con datos del destino. */
+  async listAsignaciones(collaboratorId: number) {
+    await this.ensureFactura(collaboratorId);
+    return this.db.colaboradorAsignacion.findMany({
+      where: { collaboratorId },
+      include: {
+        project: { select: { id: true, title: true, status: true } },
+        programa: { select: { id: true, nombre: true, lugar: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  /** Asigna un proyecto o programa al colaborador. */
+  async asignar(
+    collaboratorId: number,
+    dto: { projectId?: number; programaId?: number },
+  ) {
+    await this.ensureFactura(collaboratorId);
+
+    const hasProject = !!dto.projectId;
+    const hasPrograma = !!dto.programaId;
+    if (hasProject === hasPrograma) {
+      throw new BadRequestException(
+        'Debe indicar exactamente uno de projectId o programaId.',
+      );
+    }
+
+    // Verificar que el destino exista
+    if (hasProject) {
+      const p = await this.prisma.project.findUnique({
+        where: { id: dto.projectId },
+        select: { id: true },
+      });
+      if (!p) throw new NotFoundException('Proyecto no encontrado');
+    } else {
+      const p = await this.prisma.programaVoluntariado.findUnique({
+        where: { id: dto.programaId },
+        select: { id: true },
+      });
+      if (!p) throw new NotFoundException('Programa no encontrado');
+    }
+
+    // upsert-like: si ya existe, ignorar silenciosamente
+    try {
+      const asignacion = await this.db.colaboradorAsignacion.create({
+        data: {
+          collaboratorId,
+          projectId: dto.projectId ?? null,
+          programaId: dto.programaId ?? null,
+        },
+        include: {
+          project: { select: { id: true, title: true } },
+          programa: { select: { id: true, nombre: true } },
+        },
+      });
+      return asignacion;
+    } catch (e: any) {
+      // P2002 = unique constraint — ya estaba asignado
+      if (e?.code === 'P2002') {
+        throw new BadRequestException('El colaborador ya tiene esta asignación.');
+      }
+      throw e;
+    }
+  }
+
+  /** Elimina una asignación por su id. */
+  async desasignar(collaboratorId: number, asignacionId: number) {
+    const asignacion = await this.db.colaboradorAsignacion.findFirst({
+      where: { id: asignacionId, collaboratorId },
+    });
+    if (!asignacion) throw new NotFoundException('Asignación no encontrada');
+
+    await this.db.colaboradorAsignacion.delete({
+      where: { id: asignacionId },
+    });
+    return { ok: true };
+  }
+
+  /**
+   * Devuelve los proyectos y programas disponibles para un colaboradorfactura.
+   * Usado por el formulario de nueva solicitud para filtrar el selector.
+   */
+  async destinosAsignados(collaboratorId: number) {
+    const asignaciones = await this.db.colaboradorAsignacion.findMany({
+      where: { collaboratorId },
+      include: {
+        project: { select: { id: true, title: true, status: true, presupuestoTotal: true, monedaPresupuesto: true } },
+        programa: { select: { id: true, nombre: true, lugar: true, presupuestoTotal: true, monedaPresupuesto: true } },
+      },
+    });
+
+    return {
+      proyectos: asignaciones
+        .filter((a) => a.project !== null)
+        .map((a) => a.project!),
+      programas: asignaciones
+        .filter((a) => a.programa !== null)
+        .map((a) => a.programa!),
+    };
+  }
+
+  // ─── Lista de todos los colaboradores factura (para la página de asignaciones) ───
+  async listFactura(params: { q?: string; page: number; pageSize: number }) {
+    const where: any = { rol: CollaboratorRol.COLABORADORFACTURA };
+    if (params.q?.trim()) {
+      where.AND = [
+        {
+          OR: [
+            { nombreCompleto: { contains: params.q, mode: 'insensitive' } },
+            { correo: { contains: params.q, mode: 'insensitive' } },
+          ],
+        },
+      ];
+    }
+
+    const [items, total] = await Promise.all([
+      this.db.collaborator.findMany({
+        where,
+        orderBy: { nombreCompleto: 'asc' },
+        skip: (params.page - 1) * params.pageSize,
+        take: params.pageSize,
+        select: {
+          id: true,
+          nombreCompleto: true,
+          correo: true,
+          rol: true,
+          estado: true,
+          _count: { select: { asignaciones: true } },
+        },
+      }),
+      this.db.collaborator.count({ where }),
+    ]);
+
+    return {
+      items,
+      total,
+      page: params.page,
+      pageSize: params.pageSize,
+      totalPages: Math.ceil(total / params.pageSize),
+    };
+  }
+
+  private async ensureFactura(collaboratorId: number) {
+    const c = await this.db.collaborator.findUnique({
+      where: { id: collaboratorId },
+      select: { id: true, rol: true },
+    });
+    if (!c) throw new NotFoundException('Colaborador no encontrado');
+    if (c.rol !== CollaboratorRol.COLABORADORFACTURA) {
+      throw new BadRequestException(
+        'Las asignaciones de proyectos/programas solo aplican para colaboradores con rol "colaboradorfactura".',
+      );
+    }
+  }
 }

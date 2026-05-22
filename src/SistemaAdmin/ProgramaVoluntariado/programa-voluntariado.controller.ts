@@ -47,6 +47,11 @@ export class ProgramaVoluntariadoController {
     return this.service.findOne(id);
   }
 
+  @Get(':id/saldo')
+  saldo(@Param('id', ParseIntPipe) id: number) {
+    return this.service.saldo(id);
+  }
+
   @Post()
   @Audit({
     accion: 'PROGRAMA_CREAR',

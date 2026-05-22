@@ -1,11 +1,13 @@
 // src/SistemaAdmin/projects/dto/update-project.dto.ts
 import {
   IsBoolean,
+  IsNumber,
   IsOptional,
   IsString,
   IsNotEmpty,
   IsEnum,
   IsDateString,
+  Min,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ProjectStatusEnum, ProjectStatus } from './project-status.enum';
@@ -66,6 +68,15 @@ export class UpdateProjectDto {
   @IsOptional()
   @IsBoolean()
   published?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  presupuestoTotal?: number;
+
+  @IsOptional()
+  @IsString()
+  monedaPresupuesto?: string;
 
   @IsOptional()
   @IsDateString(

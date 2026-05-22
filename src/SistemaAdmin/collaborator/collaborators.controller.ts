@@ -79,6 +79,24 @@ export class CollaboratorsController {
     });
   }
 
+  // =================== Asignaciones de proyectos/programas ===================
+  // IMPORTANTE: estas rutas estáticas deben ir ANTES de GET :id para que
+  // NestJS no intente parsear "factura" como un número entero.
+
+  @Get('factura')
+  @ApiOperation({ summary: 'Lista colaboradores de tipo colaboradorfactura con conteo de asignaciones' })
+  listFactura(
+    @Query('q') q?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return this.service.listFactura({
+      q,
+      page: Number(page ?? 1),
+      pageSize: Number(pageSize ?? 20),
+    });
+  }
+
   // ---------- GET ----------
   @Get(':id')
   @ApiOperation({ summary: 'Obtener colaborador por ID' })
@@ -210,5 +228,51 @@ export class CollaboratorsController {
   async remove(@Param('id', ParseIntPipe) id: number) {
     await this.service.remove(id);
     return; // 204
+  }
+
+  @Get(':id/asignaciones')
+  @ApiOperation({ summary: 'Lista asignaciones de proyectos/programas del colaborador' })
+  listAsignaciones(@Param('id', ParseIntPipe) id: number) {
+    return this.service.listAsignaciones(id);
+  }
+
+  @Get(':id/destinos')
+  @ApiOperation({ summary: 'Lista proyectos y programas asignados al colaborador (para selector en solicitudes)' })
+  destinosAsignados(@Param('id', ParseIntPipe) id: number) {
+    return this.service.destinosAsignados(id);
+  }
+
+  @Post(':id/asignaciones')
+  @ApiOperation({ summary: 'Asignar proyecto o programa a un colaboradorfactura' })
+  @Audit({
+    accion: 'COLABORADOR_ASIGNACION_CREAR',
+    entidad: 'ColaboradorAsignacion',
+    resolveDetalle: ({ params, body }) => {
+      const b = body as any;
+      const destino = b?.projectId ? `proyecto #${b.projectId}` : `programa #${b.programaId}`;
+      return `Asignó ${destino} al colaborador #${params.id}.`;
+    },
+  })
+  asignar(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { projectId?: number; programaId?: number },
+  ) {
+    return this.service.asignar(id, body);
+  }
+
+  @Delete(':id/asignaciones/:asignacionId')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Eliminar una asignación de proyecto/programa' })
+  @Audit({
+    accion: 'COLABORADOR_ASIGNACION_ELIMINAR',
+    entidad: 'ColaboradorAsignacion',
+    resolveDetalle: ({ params }) =>
+      `Eliminó asignación #${params.asignacionId} del colaborador #${params.id}.`,
+  })
+  desasignar(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('asignacionId', ParseIntPipe) asignacionId: number,
+  ) {
+    return this.service.desasignar(id, asignacionId);
   }
 }

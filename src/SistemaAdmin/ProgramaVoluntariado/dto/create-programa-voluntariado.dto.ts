@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsInt, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 export class CreateProgramaVoluntariadoDto {
   @ApiProperty({ example: 'Programa Reforestación 2026' })
@@ -26,4 +26,15 @@ export class CreateProgramaVoluntariadoDto {
   @IsInt()
   @Min(0)
   limiteParticipantes?: number;
+
+  @ApiPropertyOptional({ example: 500000, description: 'Presupuesto asignado (0 = sin presupuesto definido)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  presupuestoTotal?: number;
+
+  @ApiPropertyOptional({ example: 'CRC' })
+  @IsOptional()
+  @IsString()
+  monedaPresupuesto?: string;
 }
