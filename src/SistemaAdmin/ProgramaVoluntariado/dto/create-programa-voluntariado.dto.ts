@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsEnum, IsInt, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { Currency } from '@prisma/client';
 
 export class CreateProgramaVoluntariadoDto {
   @ApiProperty({ example: 'Programa Reforestación 2026' })
@@ -33,8 +34,8 @@ export class CreateProgramaVoluntariadoDto {
   @Min(0)
   presupuestoTotal?: number;
 
-  @ApiPropertyOptional({ example: 'CRC' })
+  @ApiPropertyOptional({ example: 'CRC', enum: Currency })
   @IsOptional()
-  @IsString()
-  monedaPresupuesto?: string;
+  @IsEnum(Currency)
+  monedaPresupuesto?: Currency;
 }

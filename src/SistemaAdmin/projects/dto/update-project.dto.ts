@@ -9,6 +9,7 @@ import {
   IsDateString,
   Min,
 } from 'class-validator';
+import { Currency } from '@prisma/client';
 import { Transform } from 'class-transformer';
 import { ProjectStatusEnum, ProjectStatus } from './project-status.enum';
 
@@ -75,8 +76,8 @@ export class UpdateProjectDto {
   presupuestoTotal?: number;
 
   @IsOptional()
-  @IsString()
-  monedaPresupuesto?: string;
+  @IsEnum(Currency)
+  monedaPresupuesto?: Currency;
 
   @IsOptional()
   @IsDateString(
