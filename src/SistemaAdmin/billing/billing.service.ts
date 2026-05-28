@@ -3,14 +3,17 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
-  UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma, Currency, BillingRequestStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { StorageService } from '../../common/storage/storage.service';
 
 @Injectable()
 export class BillingService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly storage: StorageService,
+  ) {}
 
   // ====================== Programs list (para selector en el front) ======================
   async listPrograms() {
@@ -25,28 +28,26 @@ export class BillingService {
   async createRequest(dto: {
     amount: number;
     concept: string;
+    areaId?: number | null;
     projectId?: number | null;
     programaId?: number | null;
     draftInvoiceUrl?: string;
     createdBy?: string;
     history?: any[];
   }) {
-    // Validar XOR
-    const hasProject = !!dto.projectId;
-    const hasPrograma = !!dto.programaId;
-    if (hasProject === hasPrograma) {
-      throw new BadRequestException(
-        'Debe indicar exactamente uno de projectId o programaId.',
-      );
-    }
+    // Nuevo flujo: areaId (excluye validación XOR legacy)
+    // Flujo legacy: si no hay areaId, acepta projectId o programaId sin validación estricta.
+    const cuentaId = await this._resolveCuentaId(
+      dto.projectId ?? null,
+      dto.programaId ?? null,
+      dto.areaId ?? null,
+    );
 
-    // Snapshot cuentaId
-    const cuentaId = await this._resolveCuentaId(dto.projectId ?? null, dto.programaId ?? null);
-
-    return this.prisma.billingRequest.create({
+    return (this.prisma as any).billingRequest.create({
       data: {
         amount: new Prisma.Decimal(dto.amount),
         concept: dto.concept.trim(),
+        areaId: dto.areaId ?? null,
         projectId: dto.projectId ?? null,
         programaId: dto.programaId ?? null,
         cuentaId,
@@ -227,11 +228,12 @@ export class BillingService {
     reference: string;
     currency: Currency;
   }) {
-    const req = await this.prisma.billingRequest.findUnique({
+    const req = await (this.prisma as any).billingRequest.findUnique({
       where: { id: Number(dto.requestId) },
       include: {
         project: { select: { id: true, title: true, presupuestoTotal: true, cuentaId: true } },
         programa: { select: { id: true, nombre: true, presupuestoTotal: true, cuentaId: true } },
+        areaOrg: { select: { id: true, nombre: true } },
       },
     });
 
@@ -240,11 +242,20 @@ export class BillingService {
       throw new BadRequestException('Esta solicitud ya fue pagada');
     }
 
-    // Validar fondos disponibles
-    await this._validateBudget(req, dto.amount);
+    // _validateBudget eliminado: Fundecodes puede operar con saldo negativo.
 
-    const cuentaId = await this._resolveCuentaId(req.projectId, req.programaId);
-    const destinoLabel = req.project?.title ?? req.programa?.nombre ?? `Request #${req.id}`;
+    const cuentaId =
+      req.cuentaId ??
+      (await this._resolveCuentaId(
+        req.projectId,
+        req.programaId,
+        (req as any).areaId ?? null,
+      ));
+    const destinoLabel =
+      (req as any).areaOrg?.nombre ??
+      req.project?.title ??
+      req.programa?.nombre ??
+      `Request #${req.id}`;
 
     // Transacción atómica: Payment + Transaccion(egreso) + marcar PAID
     const [payment] = await this.prisma.$transaction([
@@ -316,15 +327,95 @@ export class BillingService {
     const f = params.file;
     if (!f) throw new BadRequestException('Archivo requerido');
 
+    // Subir a R2
+    const uploaded = await this.storage.upload(
+      f.buffer,
+      f.mimetype,
+      f.originalname,
+      'billing/receipts',
+    );
+
     return this.prisma.receipt.create({
       data: {
         projectId: params.projectId,
         paymentId: params.paymentId,
-        url: `/uploads/billing/${f.filename}`,
+        url: uploaded.url,
         mime: f.mimetype,
         bytes: f.size,
         filename: f.originalname,
       },
+    });
+  }
+
+  // ====================== Comprobante de Pago ======================
+  /**
+   * Sube un comprobante (PDF/imagen) a R2 y lo adjunta al Payment.
+   * El campo comprobanteUrl queda visible para el solicitante cuando
+   * su solicitud pasa a estado PAGADA.
+   */
+  async uploadComprobante(paymentId: string, file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('Archivo requerido');
+
+    // Verificar que el Payment exista
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: paymentId },
+      select: { id: true, comprobanteKey: true },
+    });
+    if (!payment) throw new NotFoundException(`Pago ${paymentId} no encontrado`);
+
+    // Si ya había un comprobante previo, borrar del bucket
+    if (payment.comprobanteKey) {
+      await this.storage.delete(payment.comprobanteKey);
+    }
+
+    const ALLOWED = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+    if (!ALLOWED.includes(file.mimetype)) {
+      throw new BadRequestException('Solo se permiten PDF o imágenes (JPEG, PNG, WEBP)');
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      throw new BadRequestException('El archivo no puede superar 10 MB');
+    }
+
+    const uploaded = await this.storage.upload(
+      file.buffer,
+      file.mimetype,
+      file.originalname,
+      'billing/comprobantes',
+    );
+
+    return this.prisma.payment.update({
+      where: { id: paymentId },
+      data: {
+        comprobanteUrl: uploaded.url,
+        comprobanteKey: uploaded.key,
+      },
+      select: {
+        id: true,
+        comprobanteUrl: true,
+        comprobanteKey: true,
+        amount: true,
+        currency: true,
+        date: true,
+      },
+    });
+  }
+
+  /** Elimina el comprobante adjunto a un pago. */
+  async deleteComprobante(paymentId: string) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: paymentId },
+      select: { id: true, comprobanteKey: true },
+    });
+    if (!payment) throw new NotFoundException(`Pago ${paymentId} no encontrado`);
+
+    if (payment.comprobanteKey) {
+      await this.storage.delete(payment.comprobanteKey);
+    }
+
+    return this.prisma.payment.update({
+      where: { id: paymentId },
+      data: { comprobanteUrl: null, comprobanteKey: null },
+      select: { id: true },
     });
   }
 
@@ -376,9 +467,9 @@ export class BillingService {
 
   // ====================== From Solicitud ======================
   async createBillingRequestFromSolicitud(solicitudId: number) {
-    const solicitud = await this.prisma.solicitudCompra.findUnique({
+    const solicitud = await (this.prisma as any).solicitudCompra.findUnique({
       where: { id: solicitudId },
-      include: { usuario: true, programa: true, project: true },
+      include: { usuario: true, programa: true, project: true, areaOrg: true },
     });
 
     if (!solicitud) throw new NotFoundException('Solicitud no encontrada');
@@ -391,28 +482,35 @@ export class BillingService {
     });
     if (existing) return existing;
 
-    // Validar que exista el destino
-    if (!solicitud.projectId && !solicitud.programaId) {
+    // Validar que exista algún destino (área, proyecto o programa)
+    if (!solicitud.areaId && !solicitud.projectId && !solicitud.programaId) {
       throw new BadRequestException(
-        'La solicitud no tiene proyecto ni programa asociado.',
+        'La solicitud no tiene área, proyecto ni programa asociado.',
       );
     }
 
-    const cuentaId = await this._resolveCuentaId(solicitud.projectId, solicitud.programaId);
+    const cuentaId = await this._resolveCuentaId(
+      solicitud.projectId,
+      solicitud.programaId,
+      solicitud.areaId ?? null,
+    );
     const amountDecimal = new Prisma.Decimal(solicitud.monto ?? 0);
 
     let destinoLabel: string;
-    if (solicitud.tipoOrigen === 'PROGRAMA') {
+    if (solicitud.areaId) {
+      destinoLabel = 'Área: ' + (solicitud.areaOrg?.nombre ?? '#' + solicitud.areaId);
+    } else if (solicitud.tipoOrigen === 'PROGRAMA') {
       destinoLabel = 'Programa: ' + (solicitud.programa?.nombre ?? '#' + solicitud.programaId);
     } else {
       destinoLabel = 'Proyecto: ' + (solicitud.project?.title ?? '#' + solicitud.projectId);
     }
 
-    return this.prisma.billingRequest.create({
+    return (this.prisma as any).billingRequest.create({
       data: {
         id: solicitud.id,
         amount: amountDecimal,
         concept: 'Solicitud #' + solicitud.id + ' — ' + destinoLabel,
+        areaId: solicitud.areaId ?? null,
         projectId: solicitud.projectId ?? null,
         programaId: solicitud.programaId ?? null,
         cuentaId,
@@ -420,6 +518,7 @@ export class BillingService {
         history: [
           {
             fromSolicitud: true,
+            areaId: solicitud.areaId ?? null,
             tipoOrigen: solicitud.tipoOrigen,
             programaId: solicitud.programaId ?? null,
             projectId: solicitud.projectId ?? null,
@@ -435,7 +534,16 @@ export class BillingService {
   private async _resolveCuentaId(
     projectId: number | null | undefined,
     programaId: number | null | undefined,
+    areaId?: number | null,
   ): Promise<number | null> {
+    // Nuevo flujo: área → cuenta (relación 1:1)
+    if (areaId) {
+      const cuenta = await this.prisma.cuenta.findFirst({
+        where: { areaId },
+        select: { id: true },
+      });
+      return cuenta?.id ?? null;
+    }
     if (projectId) {
       const p = await this.prisma.project.findUnique({
         where: { id: projectId },
@@ -462,46 +570,4 @@ export class BillingService {
     return p.id;
   }
 
-  private async _validateBudget(
-    req: {
-      projectId: number | null;
-      programaId: number | null;
-      project?: { presupuestoTotal: Prisma.Decimal | null } | null;
-      programa?: { presupuestoTotal: Prisma.Decimal | null } | null;
-    },
-    montoSolicitado: number,
-  ) {
-    const where: Prisma.TransaccionWhereInput = { anuladaAt: null };
-    let presupuesto = 0;
-    let nombre = '';
-
-    if (req.projectId) {
-      where.projectId = req.projectId;
-      presupuesto = Number((req.project?.presupuestoTotal ?? 0).toString());
-      nombre = 'Proyecto';
-    } else if (req.programaId) {
-      where.programaId = req.programaId;
-      presupuesto = Number((req.programa?.presupuestoTotal ?? 0).toString());
-      nombre = 'Programa';
-    }
-
-    // Calcular saldo disponible
-    const agg = await this.prisma.transaccion.groupBy({
-      by: ['tipo'],
-      where,
-      _sum: { monto: true },
-    });
-
-    const toNum = (v: Prisma.Decimal | null | undefined) =>
-      v ? Number(v.toString()) : 0;
-    const ingresos = toNum(agg.find((g) => g.tipo === 'ingreso')?._sum.monto);
-    const egresos = toNum(agg.find((g) => g.tipo === 'egreso')?._sum.monto);
-    const disponible = presupuesto + ingresos - egresos;
-
-    if (montoSolicitado > disponible) {
-      throw new UnprocessableEntityException(
-        `Fondos insuficientes en el ${nombre}. Disponible: ${disponible.toLocaleString('es-CR', { style: 'currency', currency: 'CRC' })}. Solicitado: ${montoSolicitado.toLocaleString('es-CR', { style: 'currency', currency: 'CRC' })}.`,
-      );
-    }
-  }
 }

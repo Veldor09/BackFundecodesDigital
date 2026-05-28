@@ -13,6 +13,30 @@ enum TipoTransaccion {
   egreso
 }
 
+// ===== Area — entidad pivote que agrupa proyectos, programas y cuenta =====
+// Una área representa una unidad operativa de Fundecodes (ej. "Camaronal").
+// Puede tener proyectos y programas asociados (opcionales), y está enlazada
+// 1:1 con una Cuenta para el flujo de contabilidad.
+model Area {
+  id          Int      @id @default(autoincrement())
+  nombre      String   @unique
+  descripcion String?
+  activa      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relaciones
+  proyectos       Project[]              @relation("AreaProyectos")
+  programas       ProgramaVoluntariado[] @relation("AreaProgramas")
+  cuenta          Cuenta?                @relation("AreaCuenta")
+  colaboradores   Collaborator[]         @relation("AreaColaboradores")
+  billingRequests BillingRequest[]       @relation("AreaBillingRequests")
+  solicitudes     SolicitudCompra[]      @relation("AreaSolicitudes")
+
+  @@index([activa])
+  @@map("area")
+}
+
 // ===== NUEVO: Cuenta — contenedor financiero del módulo de Contabilidad =====
 // Los proyectos y programas pueden estar (o no) bajo una cuenta. La cuenta no
 // guarda saldos ni presupuestos propios: sus totales se CALCULAN al vuelo a
@@ -27,6 +51,10 @@ model Cuenta {
   descripcion String?
   monedaBase  Currency  @default(CRC)
   activa      Boolean   @default(true)
+
+  // Área a la que pertenece esta cuenta (1:1, nullable hasta asignar)
+  areaId      Int?      @unique
+  area        Area?     @relation("AreaCuenta", fields: [areaId], references: [id], onDelete: SetNull)
 
   proyectos    Project[]
   programas    ProgramaVoluntariado[]
@@ -80,6 +108,11 @@ model Project {
   status      ProjectStatus      @default(EN_PROCESO)
   documents   ProjectDocument[]
   images      ProjectImage[]
+
+  // === Área organizacional ===
+  // Área de Fundecodes a la que pertenece este proyecto (nullable).
+  areaId              Int?
+  areaOrg             Area?    @relation("AreaProyectos", fields: [areaId], references: [id], onDelete: SetNull)
 
   // === Contabilidad ===
   // Cuenta a la que pertenece actualmente (nullable: puede existir sin cuenta).
@@ -228,10 +261,13 @@ model Collaborator {
   id                    Int               @id @default(autoincrement())
   nombreCompleto        String            @map("nombre_completo")
   correo                String            @unique @db.VarChar(160)
-  cedula                String            @unique @db.VarChar(25)
+  cedula                String?           @unique @db.VarChar(25)
   fechaNacimiento       DateTime?         @map("fecha_nacimiento")
   telefono              String?           @db.VarChar(25)
   rol                   ColaboradorRol    @default(colaboradorproyecto)
+  /// Roles adicionales del colaborador (multi-rol). El campo `rol` sigue siendo
+  /// el rol primario; este array lo complementa.
+  roles                 ColaboradorRol[]  @default([])
   passwordHash          String            @map("password_hash") @db.VarChar(255)
   estado                ColaboradorEstado @default(ACTIVO)
   createdAt             DateTime          @default(now()) @map("created_at")
@@ -239,9 +275,14 @@ model Collaborator {
   passwordUpdatedAt     DateTime?         @map("password_updated_at")
   tempPasswordExpiresAt DateTime?         @map("temp_password_expires_at")
 
+  // Área a la que pertenece (solo aplica a roles externos de área)
+  areaId      Int?
+  areaOrg     Area?    @relation("AreaColaboradores", fields: [areaId], references: [id], onDelete: SetNull)
+
   // Asignaciones a proyectos/programas (solo relevante para colaboradorfactura)
   asignaciones ColaboradorAsignacion[]
 
+  @@index([areaId])
   @@map("colaborador")
 }
 
@@ -264,21 +305,30 @@ model EmailLog {
 }
 
 model Voluntario {
-  id              Int               @id @default(autoincrement())
-  tipoDocumento   String            @map("tipo_documento")
-  numeroDocumento String            @unique @map("numero_documento") @db.VarChar(25)
-  nombreCompleto  String            @map("nombre_completo")
-  email           String            @unique @db.VarChar(160)
+  id           Int       @id @default(autoincrement())
+  nombre       String                          // Nombre completo
+  nacionalidad String?                         // País de origen
+  fechaEntrada DateTime  @map("fecha_entrada") // Fecha de inicio
+  fechaSalida  DateTime? @map("fecha_salida")  // Fecha de salida; cron elimina al día siguiente
+  ong          String?                         // ONG u organización de origen
+
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  // Campos legados (nullable; datos existentes son test data)
+  tipoDocumento   String?           @map("tipo_documento")
+  numeroDocumento String?           @unique @map("numero_documento") @db.VarChar(25)
+  nombreCompleto  String?           @map("nombre_completo")
+  email           String?           @unique @db.VarChar(160)
   telefono        String?           @db.VarChar(25)
   fechaNacimiento DateTime?         @map("fecha_nacimiento")
-  fechaIngreso    DateTime          @default(now()) @map("fecha_ingreso")
-  estado          ColaboradorEstado @default(ACTIVO)
-  createdAt       DateTime          @default(now()) @map("created_at")
-  updatedAt       DateTime          @updatedAt @map("updated_at")
-  programas       ProgramaVoluntariadoAsignacion[]
+  fechaIngreso    DateTime?         @default(now()) @map("fecha_ingreso")
+  estado          ColaboradorEstado? @default(ACTIVO)
 
-  sanciones       Sancion[]
+  programas ProgramaVoluntariadoAsignacion[]
+  sanciones Sancion[]
 
+  @@index([fechaSalida])
   @@map("voluntario")
 }
 
@@ -295,6 +345,10 @@ enum ColaboradorRol {
   colaboradorvoluntariado
   colaboradorproyecto
   colaboradorcontabilidad
+  colaboradorvisitacion          // Registra y gestiona visitaciones
+  // Roles externos (personas de las áreas con acceso limitado al sistema)
+  colaboradorsolicitante         // Crea solicitudes de factura; solo ve las suyas
+  colaboradorvoluntariadoexterno // Registra y gestiona voluntarios de su área
 }
 
 
@@ -338,9 +392,15 @@ model ProgramaVoluntariado {
   descripcion         String?
   lugar               String
   limiteParticipantes Int                              @default(0)
+  imagenUrl           String?                          @map("imagen_url")
+  imagenKey           String?                          @map("imagen_key")
 
   createdAt           DateTime                         @default(now())
   updatedAt           DateTime                         @updatedAt
+
+  // === Área organizacional ===
+  areaId               Int?
+  areaOrg              Area?    @relation("AreaProgramas", fields: [areaId], references: [id], onDelete: SetNull)
 
   // === Contabilidad ===
   // Mismo tratamiento que Project: puede existir sin cuenta y, al asignarse,
@@ -462,14 +522,16 @@ model SolicitudCompra {
   // el FE/back valida que sea obligatorio en nuevas solicitudes.
   monto               Decimal?             @db.Decimal(16, 2)
 
-  // Destino de la solicitud — debe ser EXACTAMENTE uno de los dos:
-  //   tipoOrigen=PROGRAMA  ⇒ programaId set, projectId null
-  //   tipoOrigen=PROYECTO  ⇒ projectId set, programaId null
+  // Destino legacy (campos conservados para histórico).
   tipoOrigen          TipoOrigenSolicitud?
   programaId          Int?
   programa            ProgramaVoluntariado? @relation(fields: [programaId], references: [id])
   projectId           Int?
   project             Project?             @relation(fields: [projectId], references: [id], name: "ProjectSolicitudes")
+
+  // Nuevo flujo basado en Área.
+  areaId              Int?
+  areaOrg             Area?               @relation("AreaSolicitudes", fields: [areaId], references: [id])
 
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
@@ -477,6 +539,7 @@ model SolicitudCompra {
 
   @@index([programaId])
   @@index([projectId])
+  @@index([areaId])
   @@index([usuarioId])
 }
 
@@ -589,16 +652,17 @@ enum BillingRequestStatus {
   PAID
 }
 
-// ===== BillingRequest (polimorfa: Project XOR Programa) =====
-// projectId Y programaId son opcionales pero exactamente uno debe estar set.
-// El back lo valida al crear (BillingService.createRequest / from-solicitud).
-// `cuentaId` es snapshot al momento de creación.
+// ===== BillingRequest =====
+// Ahora soporta tanto el flujo legacy (projectId/programaId) como el nuevo
+// flujo basado en Área (areaId). `cuentaId` es snapshot al momento de creación.
 model BillingRequest {
   id              Int                  @id @default(autoincrement())
   amount          Decimal              @db.Decimal(16, 2)
   concept         String
   projectId       Int?
   programaId      Int?
+  // Nuevo flujo basado en Área
+  areaId          Int?
   cuentaId        Int?
   status          BillingRequestStatus @default(PENDING)
   currency        String               @default("CRC")
@@ -611,6 +675,7 @@ model BillingRequest {
 
   project  Project?              @relation(fields: [projectId], references: [id])
   programa ProgramaVoluntariado? @relation(fields: [programaId], references: [id])
+  areaOrg  Area?                 @relation("AreaBillingRequests", fields: [areaId], references: [id])
   cuenta   Cuenta?               @relation(fields: [cuentaId], references: [id])
   payments Payment[]
 
@@ -619,6 +684,7 @@ model BillingRequest {
 
   @@index([projectId])
   @@index([programaId])
+  @@index([areaId])
   @@index([cuentaId])
 }
 
@@ -668,6 +734,10 @@ model Payment {
   currency   Currency
   reference  String
   date       DateTime
+
+  // Comprobante de pago adjunto (PDF o imagen subida por el contador)
+  comprobanteUrl String? @map("comprobante_url")
+  comprobanteKey String? @map("comprobante_key") // clave en R2 para borrado
 
   project   Project?              @relation(fields: [projectId], references: [id])
   programa  ProgramaVoluntariado? @relation(fields: [programaId], references: [id])
@@ -738,13 +808,15 @@ enum CommentStatus {
 }
 
 model Comment {
-  id        String        @id @default(cuid())
-  author    String
-  text      String
-  status    CommentStatus @default(PENDIENTE)
-  visible   Boolean       @default(false)
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  id            String        @id @default(cuid())
+  author        String
+  text          String
+  status        CommentStatus @default(PENDIENTE)
+  visible       Boolean       @default(false)
+  attachmentUrl String?       @map("attachment_url")
+  attachmentKey String?       @map("attachment_key")
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 }
 
 enum TipoFormulario {
@@ -772,4 +844,19 @@ model RespuestaFormulario {
   updatedAt      DateTime                  @updatedAt
 
   @@map("respuestas_formulario")
+}
+
+// ===== Visitacion — registro de visitas al parque / sede =====
+model Visitacion {
+  id            Int      @id @default(autoincrement())
+  fecha         DateTime @db.Date
+  totalPersonas Int      @map("total_personas")
+  nacionales    Int
+  extranjeros   Int
+  notas         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@index([fecha])
+  @@map("visitacion")
 }

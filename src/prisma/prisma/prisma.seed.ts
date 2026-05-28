@@ -22,7 +22,8 @@ async function main() {
     { key: 'contabilidad:access', description: 'Acceso al módulo de Contabilidad' },
     { key: 'cuentas:access',      description: 'Acceso a las cuentas contables' },
     { key: 'programavoluntariado:access', description: 'Acceso al módulo de Programa Voluntariado' },
-    { key: 'reportes:access', description: 'Acceso al módulo de Reportes' },
+    { key: 'reportes:access',     description: 'Acceso al módulo de Reportes' },
+    { key: 'visitaciones:access', description: 'Acceso al módulo de Visitaciones' },
   ]
   const MANAGE_PERMS = [
     { key: 'users.manage',         description: 'Gestionar usuarios' },
@@ -72,6 +73,9 @@ async function main() {
       'voluntario:access',
       'sanciones:access',
       'programavoluntariado:access',
+    ],
+    colaboradorvisitacion: [
+      'visitaciones:access',
     ],
   }
 

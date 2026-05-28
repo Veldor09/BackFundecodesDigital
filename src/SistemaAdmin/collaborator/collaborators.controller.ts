@@ -5,11 +5,13 @@ import {
   Delete,
   Get,
   HttpCode,
+  NotFoundException,
   Param,
   ParseIntPipe,
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -23,6 +25,8 @@ import {
 import { CollaboratorsService } from './collaborators.service';
 import { CreateCollaboratorDto } from './dto/create-collaborator.dto';
 import { UpdateCollaboratorDto } from './dto/update-collaborator.dto';
+import { CreateExternalCollaboratorDto } from './dto/create-external-collaborator.dto';
+import { UpdateExternalCollaboratorDto } from './dto/update-external-collaborator.dto';
 import { ListCollaboratorsQuery } from './dto/list-collaborators.query';
 import { CollaboratorRol } from './dto/collaborator-rol.enum';
 import { CollaboratorEstado } from './dto/collaborator-estado.enum';
@@ -58,10 +62,10 @@ export class CollaboratorsController {
       cedula: dto.cedula,
       fechaNacimiento: dto.fechaNacimiento ?? null,
       telefono: dto.telefono ?? null,
-      // roles ya son minúscula en el enum (admin | colaboradorfactura | ...)
       rol: dto.rol ?? undefined,
       password: dto.password,
       estado: dto.estado ?? undefined,
+      areaId: dto.areaId ?? null,
     });
     return created;
   }
@@ -79,9 +83,107 @@ export class CollaboratorsController {
     });
   }
 
+  // =================== Perfil propio (sin permiso especial) ===================
+  // IMPORTANTE: rutas estáticas ANTES de GET :id
+
+  /**
+   * Devuelve el perfil del colaborador autenticado (buscado por email del JWT).
+   * No requiere el permiso collaborators:access — cualquier colaborador logueado puede acceder.
+   */
+  @Get('me')
+  @ApiOperation({ summary: 'Perfil del colaborador autenticado' })
+  async me(@Req() req: any) {
+    const collaborator = await this.service.findByEmail(req.user.email);
+    if (!collaborator) throw new NotFoundException('No tienes un perfil de colaborador');
+    return collaborator;
+  }
+
+  // =================== Colaboradores Externos de Área ===================
+  // IMPORTANTE: rutas estáticas ANTES de GET :id
+
+  @Post('external')
+  @ApiOperation({ summary: 'Crear colaborador externo de área (solicitante o voluntariadoexterno)' })
+  @Audit({
+    accion: 'COLABORADOR_EXTERNO_CREAR',
+    entidad: 'Colaborador',
+    resolveDetalle: ({ result }) => {
+      const r = result as any;
+      return `Creó colaborador externo "${r?.nombreCompleto ?? ''}" (${r?.correo ?? ''}) rol ${r?.rol ?? '?'}.`;
+    },
+  })
+  async createExternal(@Body() dto: CreateExternalCollaboratorDto) {
+    return this.service.createExternal({
+      nombreCompleto: dto.nombreCompleto,
+      correo: dto.correo,
+      telefono: dto.telefono ?? null,
+      rol: dto.rol as any,
+      areaId: dto.areaId,
+    });
+  }
+
+  @Get('external')
+  @ApiOperation({ summary: 'Listar colaboradores externos de área (paginado)' })
+  listExternal(
+    @Query('q') q?: string,
+    @Query('areaId') areaId?: string,
+    @Query('rol') rol?: string,
+    @Query('estado') estado?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return this.service.listExternal({
+      q,
+      areaId: areaId ? Number(areaId) : undefined,
+      rol: rol as any,
+      estado,
+      page: Number(page ?? 1),
+      pageSize: Number(pageSize ?? 20),
+    });
+  }
+
+  @Patch('external/:id')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Actualizar colaborador externo' })
+  @Audit({
+    accion: 'COLABORADOR_EXTERNO_EDITAR',
+    entidad: 'Colaborador',
+    resolveDetalle: ({ params, body }) => {
+      const cambios: string[] = [];
+      if ((body as any)?.areaId) cambios.push(`área→${(body as any).areaId}`);
+      if ((body as any)?.rol) cambios.push(`rol→${(body as any).rol}`);
+      return `Editó colaborador externo #${params.id}${cambios.length ? ` (${cambios.join(', ')})` : ''}.`;
+    },
+  })
+  async updateExternal(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateExternalCollaboratorDto,
+  ) {
+    await this.service.updateExternal(id, {
+      nombreCompleto: dto.nombreCompleto,
+      correo: dto.correo,
+      telefono: dto.telefono,
+      rol: dto.rol as any,
+      areaId: dto.areaId,
+      estado: dto.estado,
+    });
+    return; // 204
+  }
+
+  @Delete('external/:id')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Eliminar colaborador externo' })
+  @Audit({
+    accion: 'COLABORADOR_EXTERNO_ELIMINAR',
+    entidad: 'Colaborador',
+    resolveDetalle: ({ params }) => `Eliminó colaborador externo #${params.id}.`,
+  })
+  async removeExternal(@Param('id', ParseIntPipe) id: number) {
+    await this.service.remove(id);
+    return; // 204
+  }
+
   // =================== Asignaciones de proyectos/programas ===================
-  // IMPORTANTE: estas rutas estáticas deben ir ANTES de GET :id para que
-  // NestJS no intente parsear "factura" como un número entero.
+  // IMPORTANTE: rutas estáticas ANTES de GET :id
 
   @Get('factura')
   @ApiOperation({ summary: 'Lista colaboradores de tipo colaboradorfactura con conteo de asignaciones' })
@@ -165,9 +267,10 @@ export class CollaboratorsController {
       cedula: dto.cedula,
       fechaNacimiento: dto.fechaNacimiento,
       telefono: dto.telefono,
-      rol: dto.rol,          // ya validado/minúscula en DTO
+      rol: dto.rol,
       password: dto.password,
-      estado: dto.estado,    // ya validado/upper en DTO
+      estado: dto.estado,
+      areaId: dto.areaId,
     });
     return; // 204
   }

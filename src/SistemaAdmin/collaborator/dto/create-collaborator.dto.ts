@@ -1,17 +1,24 @@
 import {
+  IsArray,
   IsEmail,
   IsEnum,
+  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
   Length,
   Matches,
   MaxLength,
+  Min,
 } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { CollaboratorRol } from './collaborator-rol.enum';
 import { CollaboratorEstado } from './collaborator-estado.enum';
+
+// Helper de trim
+const trim = ({ value }: { value: any }) =>
+  typeof value === 'string' ? value.trim() : value;
 
 /**
  * Formatos aceptados de cédula:
@@ -84,7 +91,7 @@ export class CreateCollaboratorDto {
     enum: CollaboratorRol,
     example: CollaboratorRol.ADMIN,
     description:
-      'Rol del colaborador. Valores: admin | colaboradorfactura | colaboradorvoluntariado | colaboradorproyecto | colaboradorcontabilidad',
+      'Rol primario del colaborador. Valores: admin | colaboradorfactura | colaboradorvoluntariado | colaboradorproyecto | colaboradorcontabilidad | colaboradorvisitacion',
     required: false,
   })
   @IsOptional()
@@ -93,9 +100,30 @@ export class CreateCollaboratorDto {
   )
   @IsEnum(CollaboratorRol, {
     message:
-      'El rol debe ser uno de: admin, colaboradorfactura, colaboradorvoluntariado, colaboradorproyecto, colaboradorcontabilidad',
+      'El rol debe ser uno de: admin, colaboradorfactura, colaboradorvoluntariado, colaboradorproyecto, colaboradorcontabilidad, colaboradorvisitacion',
   })
   rol?: CollaboratorRol;
+
+  @ApiPropertyOptional({
+    type: [String],
+    enum: CollaboratorRol,
+    description:
+      'Lista completa de roles del colaborador (multi-rol). Si no se envía, se usa el campo `rol`.',
+    example: ['colaboradorproyecto', 'colaboradorvisitacion'],
+  })
+  @IsOptional()
+  @IsArray({ message: 'roles debe ser un arreglo' })
+  @Transform(({ value }) => {
+    if (!Array.isArray(value)) return value;
+    return value.map((v: any) =>
+      typeof v === 'string' ? v.trim().toLowerCase() : v,
+    );
+  })
+  @IsEnum(CollaboratorRol, {
+    each: true,
+    message: 'Cada rol debe ser un valor válido de CollaboratorRol',
+  })
+  roles?: CollaboratorRol[];
 
   @ApiProperty({
     example: 'Str0ngP@ssw0rd',
@@ -120,4 +148,14 @@ export class CreateCollaboratorDto {
     message: 'El estado debe ser ACTIVO o INACTIVO',
   })
   estado?: CollaboratorEstado;
+
+  @ApiPropertyOptional({
+    example: 1,
+    description: 'ID del área a la que pertenece el colaborador (opcional)',
+  })
+  @IsOptional()
+  @Transform(({ value }) => (value !== null && value !== '' ? Number(value) : undefined))
+  @IsInt({ message: 'areaId debe ser un número entero' })
+  @Min(1, { message: 'areaId debe ser mayor que 0' })
+  areaId?: number;
 }

@@ -37,21 +37,32 @@ export class CreateSolicitudDto {
   monto: number;
 
   /**
-   * Tipo de destino: PROGRAMA o PROYECTO. Obligatorio.
-   * Junto con uno (y solo uno) de programaId/projectId.
+   * Nuevo flujo: ID del Área a la que pertenece la solicitud.
+   * El sistema resuelve automáticamente la cuenta asociada al área.
    */
-  @ApiProperty({ enum: TipoOrigenSolicitudDto, example: TipoOrigenSolicitudDto.PROGRAMA })
-  @IsEnum(TipoOrigenSolicitudDto)
-  tipoOrigen: TipoOrigenSolicitudDto;
+  @ApiPropertyOptional({ description: 'ID del Área (nuevo flujo basado en área)' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  areaId?: number;
 
-  @ApiPropertyOptional({ description: 'ID del programa de voluntariado (si tipoOrigen=PROGRAMA)' })
+  /**
+   * Tipo de destino legacy (PROGRAMA o PROYECTO). Conservado para compatibilidad.
+   */
+  @ApiPropertyOptional({ enum: TipoOrigenSolicitudDto, example: TipoOrigenSolicitudDto.PROGRAMA })
+  @IsOptional()
+  @IsEnum(TipoOrigenSolicitudDto)
+  tipoOrigen?: TipoOrigenSolicitudDto;
+
+  @ApiPropertyOptional({ description: 'ID del programa de voluntariado (legacy)' })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
   programaId?: number;
 
-  @ApiPropertyOptional({ description: 'ID del proyecto (si tipoOrigen=PROYECTO)' })
+  @ApiPropertyOptional({ description: 'ID del proyecto (legacy)' })
   @IsOptional()
   @Type(() => Number)
   @IsInt()

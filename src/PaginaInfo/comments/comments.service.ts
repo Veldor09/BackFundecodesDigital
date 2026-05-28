@@ -37,6 +37,8 @@ export class CommentsService {
         text: data.text.trim(),
         status: 'PENDIENTE',
         visible: false,
+        ...(data.attachmentUrl ? { attachmentUrl: data.attachmentUrl } : {}),
+        ...(data.attachmentKey ? { attachmentKey: data.attachmentKey } : {}),
       },
     });
   }

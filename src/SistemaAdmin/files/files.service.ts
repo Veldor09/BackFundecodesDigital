@@ -1,132 +1,92 @@
+// src/SistemaAdmin/files/files.service.ts
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { createWriteStream, existsSync, mkdirSync } from 'fs';
-import { join } from 'path';
-import * as crypto from 'crypto';
+import { StorageService } from '../../common/storage/storage.service';
 
-// ➡️ INTERFAZ LOCAL (corrige el error)
-interface UploadResponse {
+export interface UploadResponse {
   url: string;
+  key: string;
   name: string;
   size: number;
   mimeType: string;
   message: string;
 }
 
+const ALLOWED_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain',
+];
+
+const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
+
 @Injectable()
 export class FilesService {
-  private readonly uploadPath = join(process.cwd(), 'uploads');
-  private readonly allowedTypes = [
-    'image/jpeg',
-    'image/png',
-    'image/gif',
-    'application/pdf',
-    'application/msword',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'text/plain',
-  ];
-  private readonly maxSize = 10 * 1024 * 1024; // 10MB
+  constructor(private readonly storage: StorageService) {}
 
-  constructor() {
-    if (!existsSync(this.uploadPath)) {
-      mkdirSync(this.uploadPath, { recursive: true });
-    }
-  }
+  /**
+   * Sube un archivo a Cloudflare R2.
+   * @param file   Archivo de Multer (memory storage)
+   * @param folder Carpeta destino dentro del bucket (default: 'uploads')
+   */
+  async uploadFile(
+    file: Express.Multer.File,
+    folder = 'uploads',
+  ): Promise<UploadResponse> {
+    if (!file) throw new BadRequestException('No se proporcionó ningún archivo');
 
-  async uploadFile(file: Express.Multer.File): Promise<UploadResponse> {
-    if (!file) {
-      throw new BadRequestException('No se proporcionó ningún archivo');
-    }
-
-    if (!this.allowedTypes.includes(file.mimetype)) {
+    if (!ALLOWED_TYPES.includes(file.mimetype)) {
       throw new BadRequestException(
         `Tipo de archivo no permitido: ${file.mimetype}`,
       );
     }
 
-    if (file.size > this.maxSize) {
-      throw new BadRequestException(
-        `El archivo excede el tamaño máximo de 10MB`,
-      );
+    if (file.size > MAX_SIZE) {
+      throw new BadRequestException('El archivo excede el tamaño máximo de 10 MB');
     }
 
-    const fileExtension = file.originalname.split('.').pop();
-    const fileName = `${crypto.randomUUID()}.${fileExtension}`;
-    const filePath = join(this.uploadPath, fileName);
+    const uploaded = await this.storage.upload(
+      file.buffer,
+      file.mimetype,
+      file.originalname,
+      folder,
+    );
 
-    try {
-      const writeStream = createWriteStream(filePath);
-      writeStream.write(file.buffer);
-      writeStream.end();
-
-      return {
-        url: `/uploads/${fileName}`,
-        name: file.originalname,
-        size: file.size,
-        mimeType: file.mimetype,
-        message: 'Archivo subido exitosamente',
-      };
-    } catch (error) {
-      // ➡️ CORRECCIÓN: Manejo de error unknown
-      if (error instanceof Error) {
-        throw new BadRequestException(
-          `Error al guardar el archivo: ${error.message}`,
-        );
-      } else {
-        throw new BadRequestException(
-          'Error desconocido al guardar el archivo',
-        );
-      }
-    }
+    return {
+      url: uploaded.url,
+      key: uploaded.key,
+      name: uploaded.name,
+      size: uploaded.size,
+      mimeType: uploaded.mimeType,
+      message: 'Archivo subido exitosamente',
+    };
   }
 
+  /**
+   * Elimina un archivo por su key (clave dentro del bucket).
+   */
+  async deleteFileByKey(key: string): Promise<{ message: string }> {
+    await this.storage.delete(key);
+    return { message: 'Archivo eliminado exitosamente' };
+  }
+
+  /**
+   * Elimina un archivo a partir de su URL pública.
+   * Extrae el key automáticamente desde la URL.
+   */
   async deleteFile(fileUrl: string): Promise<{ message: string }> {
-    try {
-      const fileName = fileUrl.split('/').pop();
-      if (!fileName) {
-        throw new BadRequestException('URL de archivo inválida');
-      }
-
-      const filePath = join(this.uploadPath, fileName);
-
-      if (existsSync(filePath)) {
-        const fs = await import('fs');
-        fs.unlinkSync(filePath);
-        return { message: 'Archivo eliminado exitosamente' };
-      } else {
-        throw new BadRequestException('Archivo no encontrado');
-      }
-    } catch (error) {
-      if (error instanceof BadRequestException) throw error;
-      // ➡️ CORRECCIÓN: Manejo de error unknown
-      if (error instanceof Error) {
-        throw new BadRequestException(
-          `Error al eliminar archivo: ${error.message}`,
-        );
-      } else {
-        throw new BadRequestException('Error desconocido al eliminar archivo');
-      }
+    const key = this.storage.keyFromUrl(fileUrl);
+    if (key) {
+      await this.storage.delete(key);
     }
+    return { message: 'Archivo eliminado exitosamente' };
   }
 
   validateFileType(mimeType: string): boolean {
-    return this.allowedTypes.includes(mimeType);
-  }
-
-  getFileInfo(fileUrl: string) {
-    const fileName = fileUrl.split('/').pop();
-    if (!fileName) return null;
-
-    const filePath = join(this.uploadPath, fileName);
-    if (!existsSync(filePath)) return null;
-
-    const fs = require('fs');
-    const stats = fs.statSync(filePath);
-
-    return {
-      name: fileName,
-      size: stats.size,
-      created: stats.birthtime,
-      modified: stats.mtime,
-    };
+    return ALLOWED_TYPES.includes(mimeType);
   }
 }

@@ -27,12 +27,15 @@ type CreateData = {
   fechaNacimiento?: string | null;
   telefono?: string | null;
   rol?: Rol;
+  /** Lista completa de roles (multi-rol). Si no se envía, se usa el campo `rol`. */
+  roles?: Rol[];
   /** opcional: si no viene, invitamos por email para setear contraseña */
   password?: string;
   estado?: Estado;
+  areaId?: number | null;
 };
 
-type UpdateData = Partial<Omit<CreateData, 'password'>> & { password?: string };
+type UpdateData = Partial<Omit<CreateData, 'password'>> & { password?: string; areaId?: number | null };
 
 @Injectable()
 export class CollaboratorsService {
@@ -55,11 +58,14 @@ export class CollaboratorsService {
     const low = String(v).trim().toLowerCase();
 
     const allowed = new Set<string>([
-      CollaboratorRol.ADMIN,                     // 'admin'
-      CollaboratorRol.COLABORADORFACTURA,       // 'colaboradorfactura'
-      CollaboratorRol.COLABORADORVOLUNTARIADO,  // 'colaboradorvoluntariado'
-      CollaboratorRol.COLABORADORPROYECTO,      // 'colaboradorproyecto'
-      CollaboratorRol.COLABORADORCONTABILIDAD,  // 'colaboradorcontabilidad'
+      CollaboratorRol.ADMIN,
+      CollaboratorRol.COLABORADORFACTURA,
+      CollaboratorRol.COLABORADORVOLUNTARIADO,
+      CollaboratorRol.COLABORADORPROYECTO,
+      CollaboratorRol.COLABORADORCONTABILIDAD,
+      CollaboratorRol.COLABORADORVISITACION,
+      CollaboratorRol.COLABORADORSOLICITANTE,
+      CollaboratorRol.COLABORADORVOLUNTARIADOEXTERNO,
     ]);
 
     return (allowed.has(low) ? (low as Rol) : CollaboratorRol.COLABORADORPROYECTO);
@@ -219,6 +225,52 @@ export class CollaboratorsService {
     return user; // { id, email }
   }
 
+  /**
+   * Sincroniza los UserRole del user: agrega los nuevos roles y elimina
+   * los que ya no están (solo considera roles de tipo CollaboratorRol).
+   */
+  private async syncUserRoles(tx: any, userId: number, roles: Rol[]): Promise<void> {
+    const allCollabRoleNames = new Set<string>(Object.values(CollaboratorRol));
+
+    // Asegurar existencia de Role records y obtener sus IDs
+    const roleRecords: Array<{ id: number }> = await Promise.all(
+      roles.map((r) =>
+        tx.role.upsert({
+          where: { name: r },
+          create: { name: r },
+          update: {},
+          select: { id: true },
+        }),
+      ),
+    );
+    const newRoleIds = new Set<number>(roleRecords.map((r) => r.id));
+
+    // Obtener todos los UserRoles actuales del usuario
+    const existingLinks: Array<{ id: number; roleId: number; role: { name: string } }> =
+      await tx.userRole.findMany({
+        where: { userId },
+        select: { id: true, roleId: true, role: { select: { name: true } } },
+      });
+
+    // Eliminar los que son roles de colaborador pero ya no están en la lista
+    const toRemove = existingLinks.filter(
+      (link) => allCollabRoleNames.has(link.role.name) && !newRoleIds.has(link.roleId),
+    );
+    if (toRemove.length > 0) {
+      await tx.userRole.deleteMany({
+        where: { id: { in: toRemove.map((l) => l.id) } },
+      });
+    }
+
+    // Agregar los roles que faltan
+    const existingRoleIds = new Set<number>(existingLinks.map((l) => l.roleId));
+    for (const roleId of newRoleIds) {
+      if (!existingRoleIds.has(roleId)) {
+        await tx.userRole.create({ data: { userId, roleId } });
+      }
+    }
+  }
+
   // ----------------- CRUD -----------------
   async create(data: CreateData) {
     const correo = this.normalizeEmail(data.correo);
@@ -237,6 +289,16 @@ export class CollaboratorsService {
     const estadoNormalized: Estado =
       this.normalizeEstado(data.estado) ?? CollaboratorEstado.ACTIVO;
 
+    // Roles normalizados: si se envían, usarlos; si no, partir del rol primario
+    const rolesNormalized: Rol[] = (
+      data.roles?.length
+        ? data.roles.map((r) => this.normalizeRol(r) ?? CollaboratorRol.COLABORADORPROYECTO)
+        : [roleNormalized]
+    ).filter((r, i, arr) => arr.indexOf(r) === i); // dedup
+    // Asegurar que el rol principal esté en el array
+    if (!rolesNormalized.includes(roleNormalized)) rolesNormalized.unshift(roleNormalized);
+    const primaryRol: Rol = rolesNormalized[0];
+
     const { created, user } = await this.prisma.$transaction(async (tx) => {
       const created = await (tx as any).collaborator.create({
         data: {
@@ -245,11 +307,13 @@ export class CollaboratorsService {
           cedula: data.cedula,
           fechaNacimiento: data.fechaNacimiento ? new Date(data.fechaNacimiento) : null,
           telefono: data.telefono ?? null,
-          rol: roleNormalized,
+          rol: primaryRol,
+          roles: rolesNormalized,
           passwordHash,
           estado: estadoNormalized,
           passwordUpdatedAt: new Date(),
           tempPasswordExpiresAt: null,
+          areaId: data.areaId ?? null,
         },
         select: {
           id: true,
@@ -259,7 +323,9 @@ export class CollaboratorsService {
           fechaNacimiento: true,
           telefono: true,
           rol: true,
+          roles: true,
           estado: true,
+          areaId: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -269,9 +335,11 @@ export class CollaboratorsService {
         tx,
         correo,
         created.nombreCompleto,
-        roleNormalized,
+        primaryRol,
         passwordHash,
       );
+      // Sincronizar todos los roles del colaborador en la tabla User/UserRole
+      await this.syncUserRoles(tx, user.id, rolesNormalized);
 
       return { created, user };
     });
@@ -337,7 +405,10 @@ export class CollaboratorsService {
           fechaNacimiento: true,
           telefono: true,
           rol: true,
+          roles: true,
           estado: true,
+          areaId: true,
+          areaOrg: { select: { id: true, nombre: true } },
           createdAt: true,
           updatedAt: true,
         },
@@ -365,13 +436,33 @@ export class CollaboratorsService {
         fechaNacimiento: true,
         telefono: true,
         rol: true,
+        roles: true,
         estado: true,
+        areaId: true,
+        areaOrg: { select: { id: true, nombre: true } },
         createdAt: true,
         updatedAt: true,
       },
     });
     if (!found) throw new NotFoundException('Colaborador no encontrado');
     return found;
+  }
+
+  /** Encuentra el colaborador asociado a un email de usuario. Devuelve null si no existe. */
+  async findByEmail(email: string) {
+    return this.db.collaborator.findFirst({
+      where: { correo: email.toLowerCase().trim() },
+      select: {
+        id: true,
+        nombreCompleto: true,
+        correo: true,
+        rol: true,
+        roles: true,
+        estado: true,
+        areaId: true,
+        areaOrg: { select: { id: true, nombre: true } },
+      },
+    });
   }
 
   async update(id: number, data: UpdateData): Promise<void> {
@@ -401,6 +492,18 @@ export class CollaboratorsService {
       ? await bcrypt.hash(data.password, BCRYPT_COST)
       : undefined;
 
+    // Roles normalizados (solo si se envían explícitamente)
+    let nextRoles: Rol[] | undefined;
+    if (data.roles !== undefined) {
+      nextRoles = (
+        data.roles.length > 0
+          ? data.roles.map((r) => this.normalizeRol(r) ?? CollaboratorRol.COLABORADORPROYECTO)
+          : [nextRol]
+      ).filter((r, i, arr) => arr.indexOf(r) === i);
+      // Asegurar rol primario
+      if (!nextRoles.includes(nextRol)) nextRoles.unshift(nextRol);
+    }
+
     await this.prisma.$transaction(async (tx) => {
       await (tx as any).collaborator.update({
         where: { id },
@@ -416,22 +519,28 @@ export class CollaboratorsService {
               : null,
           telefono: data.telefono,
           rol: data.rol !== undefined ? nextRol : undefined,
+          ...(nextRoles !== undefined ? { roles: nextRoles } : {}),
           passwordHash,
           ...(passwordHash
             ? { passwordUpdatedAt: new Date(), tempPasswordExpiresAt: null }
             : {}),
           estado: data.estado !== undefined ? nextEstado : undefined,
+          ...(data.areaId !== undefined ? { areaId: data.areaId } : {}),
         },
       });
 
       // Sincroniza user (garantiza existencia y rol)
-      await this.ensureUserAndRole(
+      const user = await this.ensureUserAndRole(
         tx,
         nextCorreo,
         data.nombreCompleto ?? existing.nombreCompleto,
         nextRol,
         passwordHash, // si viene, actualizamos password del user
       );
+      // Si se enviaron roles, sincronizar todos
+      if (nextRoles !== undefined) {
+        await this.syncUserRoles(tx, user.id, nextRoles);
+      }
     });
   }
 
@@ -467,7 +576,9 @@ export class CollaboratorsService {
         fechaNacimiento: true,
         telefono: true,
         rol: true,
+        roles: true,
         estado: true,
+        areaId: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -666,6 +777,235 @@ export class CollaboratorsService {
       pageSize: params.pageSize,
       totalPages: Math.ceil(total / params.pageSize),
     };
+  }
+
+  // =================== Colaboradores Externos de Área ===================
+  // Roles: colaboradorsolicitante | colaboradorvoluntariadoexterno
+  // Solo requieren: nombreCompleto, correo, telefono, areaId
+
+  async createExternal(data: {
+    nombreCompleto: string;
+    correo: string;
+    telefono?: string | null;
+    rol: Rol;
+    areaId: number;
+  }) {
+    const correo = this.normalizeEmail(data.correo);
+
+    // Verificar que el área exista
+    const area = await this.db.area.findUnique({
+      where: { id: data.areaId },
+      select: { id: true, nombre: true },
+    });
+    if (!area) throw new NotFoundException(`Área #${data.areaId} no encontrada`);
+
+    // Verificar unicidad de correo
+    const existing = await this.db.collaborator.findFirst({
+      where: { correo },
+      select: { id: true },
+    });
+    if (existing) throw new ConflictException('Correo ya está en uso');
+
+    const roleNormalized = this.normalizeRol(data.rol) ?? CollaboratorRol.COLABORADORSOLICITANTE;
+    const passwordHash = await bcrypt.hash(generateStrongPassword(12), BCRYPT_COST);
+
+    const { created, user } = await this.prisma.$transaction(async (tx) => {
+      const created = await (tx as any).collaborator.create({
+        data: {
+          nombreCompleto: data.nombreCompleto,
+          correo,
+          cedula: null,
+          fechaNacimiento: null,
+          telefono: data.telefono ?? null,
+          rol: roleNormalized,
+          passwordHash,
+          estado: CollaboratorEstado.ACTIVO,
+          passwordUpdatedAt: new Date(),
+          tempPasswordExpiresAt: null,
+          areaId: data.areaId,
+        },
+        select: {
+          id: true,
+          nombreCompleto: true,
+          correo: true,
+          telefono: true,
+          rol: true,
+          estado: true,
+          areaId: true,
+          areaOrg: { select: { id: true, nombre: true } },
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+      const user = await this.ensureUserAndRole(
+        tx,
+        correo,
+        data.nombreCompleto,
+        roleNormalized,
+        passwordHash,
+      );
+
+      return { created, user };
+    });
+
+    // Enviar correo de bienvenida para que establezca su contraseña
+    try {
+      const secret = this.config.get<string>('PASSWORD_JWT_SECRET');
+      if (!secret) throw new Error('PASSWORD_JWT_SECRET no configurado');
+
+      const expiresIn = this.config.get<string | number>('PASSWORD_JWT_EXPIRES') ?? '30m';
+      const token = await this.jwt.signAsync(
+        { email: user.email, userId: user.id },
+        { secret, expiresIn, jwtid: crypto.randomUUID() },
+      );
+
+      const sendEmails = (this.config.get<string>('SEND_EMAILS') ?? 'true').toLowerCase() !== 'false';
+      if (!sendEmails) {
+        const link = this.email.buildSetPasswordLink(token);
+        return { ...created, welcomeLink: link, mode: 'DRY_RUN' as const };
+      }
+
+      await this.email.sendWelcomeSetPasswordEmail(user.email, token);
+    } catch (e: any) {
+      console.warn('[EXTERNAL_COLLABORATOR.CREATE] email no enviado:', e?.message || e);
+    }
+
+    return created;
+  }
+
+  async listExternal(params: {
+    q?: string;
+    areaId?: number;
+    rol?: Rol;
+    estado?: string;
+    page: number;
+    pageSize: number;
+  }) {
+    const { q, areaId, rol, estado, page, pageSize } = params;
+
+    const where: any = {
+      rol: {
+        in: [
+          CollaboratorRol.COLABORADORSOLICITANTE,
+          CollaboratorRol.COLABORADORVOLUNTARIADOEXTERNO,
+        ],
+      },
+    };
+
+    if (q?.trim()) {
+      where.AND = [
+        {
+          OR: [
+            { nombreCompleto: { contains: q, mode: 'insensitive' } },
+            { correo: { contains: q, mode: 'insensitive' } },
+          ],
+        },
+      ];
+    }
+
+    if (areaId) where.areaId = areaId;
+    if (rol && [CollaboratorRol.COLABORADORSOLICITANTE, CollaboratorRol.COLABORADORVOLUNTARIADOEXTERNO].includes(rol as any)) {
+      where.rol = rol;
+    }
+    if (estado) where.estado = this.normalizeEstado(estado);
+
+    const [items, total] = await Promise.all([
+      this.db.collaborator.findMany({
+        where,
+        orderBy: { nombreCompleto: 'asc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        select: {
+          id: true,
+          nombreCompleto: true,
+          correo: true,
+          telefono: true,
+          rol: true,
+          estado: true,
+          areaId: true,
+          areaOrg: { select: { id: true, nombre: true } },
+          createdAt: true,
+          updatedAt: true,
+        },
+      }),
+      this.db.collaborator.count({ where }),
+    ]);
+
+    return {
+      items,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
+  async updateExternal(
+    id: number,
+    data: {
+      nombreCompleto?: string;
+      correo?: string;
+      telefono?: string | null;
+      rol?: Rol;
+      areaId?: number | null;
+      estado?: Estado;
+    },
+  ) {
+    const existing = await this.db.collaborator.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('Colaborador no encontrado');
+
+    // Asegura que sea un rol externo
+    if (
+      existing.rol !== CollaboratorRol.COLABORADORSOLICITANTE &&
+      existing.rol !== CollaboratorRol.COLABORADORVOLUNTARIADOEXTERNO
+    ) {
+      throw new BadRequestException(
+        'Este endpoint solo permite actualizar colaboradores con roles externos.',
+      );
+    }
+
+    const nextCorreo = data.correo ? this.normalizeEmail(data.correo) : null;
+    if (nextCorreo && nextCorreo !== this.normalizeEmail(existing.correo)) {
+      const dup = await this.db.collaborator.findFirst({
+        where: { correo: nextCorreo, NOT: { id } },
+        select: { id: true },
+      });
+      if (dup) throw new ConflictException('Correo ya está en uso');
+    }
+
+    if (data.areaId !== undefined && data.areaId !== null) {
+      const area = await this.db.area.findUnique({
+        where: { id: data.areaId },
+        select: { id: true },
+      });
+      if (!area) throw new NotFoundException(`Área #${data.areaId} no encontrada`);
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await (tx as any).collaborator.update({
+        where: { id },
+        data: {
+          ...(data.nombreCompleto !== undefined && { nombreCompleto: data.nombreCompleto }),
+          ...(nextCorreo !== null && { correo: nextCorreo }),
+          ...(data.telefono !== undefined && { telefono: data.telefono }),
+          ...(data.rol !== undefined && { rol: this.normalizeRol(data.rol) }),
+          ...(data.estado !== undefined && { estado: this.normalizeEstado(data.estado) }),
+          ...(data.areaId !== undefined && { areaId: data.areaId }),
+        },
+      });
+
+      if (nextCorreo || data.nombreCompleto) {
+        await this.ensureUserAndRole(
+          tx,
+          nextCorreo ?? this.normalizeEmail(existing.correo),
+          data.nombreCompleto ?? existing.nombreCompleto,
+          data.rol
+            ? (this.normalizeRol(data.rol) as Rol)
+            : (existing.rol as Rol),
+        );
+      }
+    });
   }
 
   private async ensureFactura(collaboratorId: number) {

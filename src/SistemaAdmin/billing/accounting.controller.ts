@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
@@ -11,28 +12,21 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiConsumes, ApiQuery, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import type { Request as ExRequest } from 'express';
-import { extname } from 'path';
 import { BillingService } from './billing.service';
 import { CreateAllocationDto } from './dto/create-allocation.dto';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { Permissions } from '../../common/decorators/permissions.decorator';
-
-function fname(
-  req: ExRequest,
-  file: Express.Multer.File,
-  cb: (e: Error | null, name: string) => void,
-) {
-  const safe = `${Date.now()}-${Math.round(Math.random() * 1e9)}${extname(
-    file.originalname,
-  )}`;
-  cb(null, safe);
-}
 
 @ApiTags('Billing - Accounting')
 @ApiBearerAuth('bearer')
@@ -44,26 +38,28 @@ export class AccountingController {
 
   /* ----- Asignaciones de fondos ----- */
   @Post('allocations')
+  @ApiOperation({ summary: 'Crear asignación de fondos' })
   createAllocation(@Body() dto: CreateAllocationDto) {
     return this.svc.createAllocation(dto);
   }
 
   /* ----- Pagos ----- */
   @Post('payments')
+  @ApiOperation({ summary: 'Registrar pago de una solicitud' })
   createPayment(@Body() dto: CreatePaymentDto) {
     return this.svc.createPayment(dto as any);
   }
 
-  // NUEVO: listar pagos por requestId o projectId
   @Get('payments')
+  @ApiOperation({ summary: 'Listar pagos por solicitud o proyecto' })
   @ApiQuery({ name: 'requestId', required: false, type: Number })
   @ApiQuery({ name: 'projectId', required: false, type: Number })
   listPayments(
     @Query('requestId') requestId?: string,
     @Query('projectId') projectId?: string,
   ) {
-    const hasRequest = requestId !== undefined && requestId !== null && requestId !== '';
-    const hasProject = projectId !== undefined && projectId !== null && projectId !== '';
+    const hasRequest = requestId !== undefined && requestId !== '';
+    const hasProject = projectId !== undefined && projectId !== '';
 
     if (!hasRequest && !hasProject) {
       throw new BadRequestException('Debe enviar requestId o projectId');
@@ -79,32 +75,40 @@ export class AccountingController {
       throw new BadRequestException('projectId inválido');
     }
 
-    return this.svc.listPayments({
-      requestId: reqIdNum,
-      projectId: projIdNum,
-    });
+    return this.svc.listPayments({ requestId: reqIdNum, projectId: projIdNum });
   }
 
-  /* ----- Recibos (archivo) ----- */
-  @Post('receipts')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: diskStorage({
-        destination: process.env.BILLING_UPLOADS_DIR || 'uploads/billing',
-        filename: fname,
-      }),
-      limits: { fileSize: 10 * 1024 * 1024 },
-      fileFilter: (req, file, cb) => {
-        const ok = [
-          'application/pdf',
-          'image/jpeg',
-          'image/png',
-          'image/webp',
-        ].includes(file.mimetype);
-        cb(ok ? null : new BadRequestException('Tipo no permitido'), ok);
+  /* ----- Comprobante de Pago (R2) ----- */
+  @Post('payments/:paymentId/comprobante')
+  @ApiOperation({ summary: 'Adjuntar comprobante de pago (PDF o imagen) — subido a R2' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary', description: 'PDF o imagen del comprobante' },
       },
-    }),
-  )
+      required: ['file'],
+    },
+  })
+  @UseInterceptors(FileInterceptor('file'))
+  uploadComprobante(
+    @Param('paymentId') paymentId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('Archivo requerido (file)');
+    return this.svc.uploadComprobante(paymentId, file);
+  }
+
+  @Delete('payments/:paymentId/comprobante')
+  @ApiOperation({ summary: 'Eliminar comprobante de pago' })
+  deleteComprobante(@Param('paymentId') paymentId: string) {
+    return this.svc.deleteComprobante(paymentId);
+  }
+
+  /* ----- Recibos de factura (R2) ----- */
+  @Post('receipts')
+  @ApiOperation({ summary: 'Adjuntar recibo de factura a un proyecto (subido a R2)' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {
@@ -117,28 +121,27 @@ export class AccountingController {
       required: ['projectId', 'file'],
     },
   })
+  @UseInterceptors(FileInterceptor('file'))
   uploadReceipt(
     @UploadedFile() file: Express.Multer.File,
     @Body('projectId') projectId: string,
     @Body('paymentId') paymentId?: string,
   ) {
-    return this.svc.createReceipt({
-      projectId: Number(projectId),
-      paymentId,
-      file,
-    });
+    if (!file) throw new BadRequestException('Archivo requerido (file)');
+    return this.svc.createReceipt({ projectId: Number(projectId), paymentId, file });
   }
 
   /* ----- Historial consolidado ----- */
   @Get('programs/:projectId/ledger')
-  @ApiQuery({ name: 'projectId', required: true })
+  @ApiOperation({ summary: 'Historial contable de un proyecto/programa' })
   getLedger(@Param('projectId') projectId: string) {
     return this.svc.getProgramLedger(Number(projectId));
   }
 
-    /* ----- Crear BillingRequest desde una Solicitud aprobada ----- */
+  /* ----- Crear BillingRequest desde una Solicitud aprobada ----- */
   @Post('request-from-solicitud/:solicitudId')
-  async createBillingRequestFromSolicitud(
+  @ApiOperation({ summary: 'Crear BillingRequest desde solicitud aprobada' })
+  createBillingRequestFromSolicitud(
     @Param('solicitudId', ParseIntPipe) solicitudId: number,
   ) {
     return this.svc.createBillingRequestFromSolicitud(solicitudId);

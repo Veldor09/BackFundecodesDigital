@@ -16,8 +16,9 @@ const SOLICITUD_INCLUDE = {
   usuario: { select: { id: true, name: true, email: true } },
   programa: { select: { id: true, nombre: true } },
   project: { select: { id: true, title: true, slug: true } },
+  areaOrg: { select: { id: true, nombre: true } },
   historial: { orderBy: { createdAt: 'desc' as const } },
-} satisfies Prisma.SolicitudCompraInclude;
+} as any;
 
 @Injectable()
 export class SolicitudesService {
@@ -41,33 +42,19 @@ export class SolicitudesService {
     const userEmail = typeof actor === 'object' ? actor?.email ?? null : null;
     const userName = typeof actor === 'object' ? actor?.name ?? null : null;
 
-    // Validar XOR de destino: exactamente uno de programaId / projectId.
-    const { tipoOrigen, programaId, projectId } = dto;
-    if (tipoOrigen === TipoOrigenSolicitudDto.PROGRAMA) {
-      if (!programaId) {
-        throw new BadRequestException(
-          'tipoOrigen=PROGRAMA requiere programaId.',
-        );
-      }
-      if (projectId) {
-        throw new BadRequestException(
-          'No se puede enviar projectId cuando tipoOrigen=PROGRAMA.',
-        );
-      }
-    } else if (tipoOrigen === TipoOrigenSolicitudDto.PROYECTO) {
-      if (!projectId) {
-        throw new BadRequestException(
-          'tipoOrigen=PROYECTO requiere projectId.',
-        );
-      }
-      if (programaId) {
-        throw new BadRequestException(
-          'No se puede enviar programaId cuando tipoOrigen=PROYECTO.',
-        );
-      }
-    }
+    const { tipoOrigen, programaId, projectId, areaId } = dto;
 
-    // Verificar que la entidad referenciada exista (mejor mensaje que un FK error).
+    // Nuevo flujo: areaId. Flujo legacy: tipoOrigen + programaId/projectId.
+    // No se valida XOR estricto — se acepta cualquier combinación válida.
+
+    // Verificar existencia de la entidad referenciada si se proveyó (mejor mensaje que un FK error).
+    if (areaId) {
+      const exists = await (this.prisma as any).area.findUnique({
+        where: { id: areaId },
+        select: { id: true },
+      });
+      if (!exists) throw new BadRequestException(`Área #${areaId} no existe.`);
+    }
     if (programaId) {
       const exists = await this.prisma.programaVoluntariado.findUnique({
         where: { id: programaId },
@@ -83,14 +70,15 @@ export class SolicitudesService {
       if (!exists) throw new BadRequestException(`Proyecto #${projectId} no existe.`);
     }
 
-    const created = await this.prisma.solicitudCompra.create({
+    const created = await (this.prisma as any).solicitudCompra.create({
       data: {
         titulo: dto.titulo,
         descripcion: dto.descripcion,
         archivos,
         usuarioId: dto.usuarioId ?? usuarioId,
         monto: new Prisma.Decimal(dto.monto),
-        tipoOrigen,
+        areaId: areaId ?? null,
+        tipoOrigen: tipoOrigen ?? null,
         programaId: programaId ?? null,
         projectId: projectId ?? null,
         estadoContadora: 'PENDIENTE',
@@ -99,12 +87,13 @@ export class SolicitudesService {
       include: SOLICITUD_INCLUDE,
     });
 
-    // Auditoría manual: el interceptor también podría hacerlo, pero acá tenemos
-    // contexto rico (resumen humano legible) que vale la pena guardar.
-    const destino =
-      tipoOrigen === TipoOrigenSolicitudDto.PROGRAMA
-        ? `programa "${created.programa?.nombre ?? programaId}"`
-        : `proyecto "${created.project?.title ?? projectId}"`;
+    // Etiqueta de destino para auditoría
+    const destino = areaId
+      ? `área "${(created as any).areaOrg?.nombre ?? areaId}"`
+      : tipoOrigen === TipoOrigenSolicitudDto.PROGRAMA
+      ? `programa "${(created as any).programa?.nombre ?? programaId}"`
+      : `proyecto "${(created as any).project?.title ?? projectId}"`;
+
     await this.auditoria.registrar({
       userId: usuarioId ?? null,
       userEmail,
@@ -116,7 +105,8 @@ export class SolicitudesService {
       metadata: {
         titulo: created.titulo,
         monto: created.monto?.toString() ?? null,
-        tipoOrigen,
+        areaId: areaId ?? null,
+        tipoOrigen: tipoOrigen ?? null,
         programaId: programaId ?? null,
         projectId: projectId ?? null,
         archivos: archivos.length,
@@ -130,7 +120,7 @@ export class SolicitudesService {
   // 🔹 LISTAR TODAS LAS SOLICITUDES
   // =====================================================
   async findAll() {
-    return this.prisma.solicitudCompra.findMany({
+    return (this.prisma as any).solicitudCompra.findMany({
       orderBy: { createdAt: 'desc' },
       include: SOLICITUD_INCLUDE,
     });
@@ -140,7 +130,7 @@ export class SolicitudesService {
   // 🔹 OBTENER SOLICITUD POR ID
   // =====================================================
   async findOne(id: number) {
-    const solicitud = await this.prisma.solicitudCompra.findUnique({
+    const solicitud = await (this.prisma as any).solicitudCompra.findUnique({
       where: { id },
       include: SOLICITUD_INCLUDE,
     });

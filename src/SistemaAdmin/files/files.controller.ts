@@ -1,143 +1,77 @@
+// src/SistemaAdmin/files/files.controller.ts
 import {
   Controller,
   Post,
-  UploadedFile,
-  UseInterceptors,
   Delete,
   Body,
-  Get,
-  Param,
-  Res,
+  Query,
+  UploadedFile,
+  UseInterceptors,
   BadRequestException,
-  NotFoundException,
   UseGuards,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import { FilesService } from './files.service';
-import { Response } from 'express';
-import { join, basename, resolve } from 'path';
-import * as fs from 'fs';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 
-/**
- * Sanitiza un nombre de archivo solicitado por el cliente.
- * Previene path traversal (../, /etc/passwd, etc.) usando `basename`.
- */
-function safeFilename(raw: string): string {
-  const clean = basename(raw || '').trim();
-  if (!clean || clean === '.' || clean === '..' || clean.includes('\0')) {
-    throw new BadRequestException('Nombre de archivo inválido');
-  }
-  return clean;
-}
-
-/**
- * Busca un archivo dentro de `uploadsDir` sólo en las subcarpetas permitidas.
- * Verifica que la ruta resuelta quede siempre DENTRO de `uploadsDir` (defensa
- * en profundidad contra enlaces simbólicos).
- */
-function findAllowedPath(uploadsDir: string, filename: string): string | null {
-  const allowedDirs = ['', 'projects', 'projects/docs', 'accounting', 'solicitudes', 'billing'];
-  const root = resolve(uploadsDir);
-
-  for (const sub of allowedDirs) {
-    const candidate = resolve(join(uploadsDir, sub, filename));
-    if (!candidate.startsWith(root)) continue; // traversal check
-    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
-      return candidate;
-    }
-  }
-  return null;
-}
-
+@ApiTags('Archivos')
+@ApiBearerAuth('bearer')
+@UseGuards(JwtAuthGuard)
 @Controller('files')
 export class FilesController {
   constructor(private readonly filesService: FilesService) {}
 
   // ================================================================
-  // 🟢 SUBIR ARCHIVO (requiere JWT)
+  // SUBIR ARCHIVO → Cloudflare R2
   // ================================================================
   @Post('upload')
-  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Subir archivo a Cloudflare R2 y obtener URL pública' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary' },
+        folder: { type: 'string', example: 'projects', description: 'Carpeta destino (uploads, projects, receipts, etc.)' },
+      },
+      required: ['file'],
+    },
+  })
+  @ApiQuery({ name: 'folder', required: false, description: 'Carpeta destino en R2' })
   @UseInterceptors(FileInterceptor('file'))
-  async uploadFile(@UploadedFile() file: Express.Multer.File) {
+  async uploadFile(
+    @UploadedFile() file: Express.Multer.File,
+    @Query('folder') folder?: string,
+  ) {
     if (!file) throw new BadRequestException('Archivo requerido (file)');
-    return this.filesService.uploadFile(file);
+    return this.filesService.uploadFile(file, folder ?? 'uploads');
   }
 
   // ================================================================
-  // 🔴 ELIMINAR ARCHIVO (requiere JWT)
+  // ELIMINAR ARCHIVO por URL pública
   // ================================================================
   @Delete('delete')
-  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Eliminar archivo de R2 por su URL pública' })
   async deleteFile(@Body('url') url: string) {
+    if (!url) throw new BadRequestException('URL requerida');
     return this.filesService.deleteFile(url);
   }
 
   // ================================================================
-  // 🔍 INFO ARCHIVO
+  // ELIMINAR ARCHIVO por key de bucket
   // ================================================================
-  @Get('info/:filename')
-  @UseGuards(JwtAuthGuard)
-  async getFileInfo(@Param('filename') filename: string) {
-    const safe = safeFilename(filename);
-    return this.filesService.getFileInfo(`/uploads/${safe}`);
-  }
-
-  // ================================================================
-  // 📥 DESCARGAR ARCHIVO
-  // ================================================================
-  @Get('download/:filename')
-  @UseGuards(JwtAuthGuard)
-  async downloadFile(
-    @Param('filename') filename: string,
-    @Res() res: Response,
-  ) {
-    const safe = safeFilename(filename);
-    const uploadsDir = join(process.cwd(), 'uploads');
-    const existingPath = findAllowedPath(uploadsDir, safe);
-
-    if (!existingPath) {
-      throw new NotFoundException('Archivo no encontrado');
-    }
-
-    res.set({
-      'Content-Disposition': `attachment; filename="${encodeURIComponent(safe)}"`,
-      'Content-Type': 'application/octet-stream',
-    });
-    fs.createReadStream(existingPath).pipe(res);
-  }
-
-  // ================================================================
-  // 👁️ PREVISUALIZAR ARCHIVO
-  // ================================================================
-  @Get('preview/:filename')
-  @UseGuards(JwtAuthGuard)
-  async previewFile(@Param('filename') filename: string, @Res() res: Response) {
-    const safe = safeFilename(filename);
-    const uploadsDir = join(process.cwd(), 'uploads');
-    const existingPath = findAllowedPath(uploadsDir, safe);
-
-    if (!existingPath) {
-      throw new NotFoundException('Archivo no encontrado');
-    }
-
-    const ext = safe.split('.').pop()?.toLowerCase();
-    const mimeTypes: Record<string, string> = {
-      pdf: 'application/pdf',
-      jpg: 'image/jpeg',
-      jpeg: 'image/jpeg',
-      png: 'image/png',
-      gif: 'image/gif',
-      webp: 'image/webp',
-      txt: 'text/plain; charset=utf-8',
-    };
-    const contentType = mimeTypes[ext ?? ''] || 'application/octet-stream';
-
-    res.set({
-      'Content-Type': contentType,
-      'Cache-Control': 'private, max-age=300',
-    });
-    fs.createReadStream(existingPath).pipe(res);
+  @Delete('delete-by-key')
+  @ApiOperation({ summary: 'Eliminar archivo de R2 por su key (ruta interna)' })
+  async deleteByKey(@Body('key') key: string) {
+    if (!key) throw new BadRequestException('Key requerido');
+    return this.filesService.deleteFileByKey(key);
   }
 }

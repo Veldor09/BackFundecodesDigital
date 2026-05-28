@@ -61,7 +61,9 @@ export class CuentasService {
         descripcion: dto.descripcion ?? null,
         monedaBase: dto.monedaBase ?? 'CRC',
         activa: dto.activa ?? true,
+        areaId: dto.areaId ?? null,
       },
+      include: { area: { select: { id: true, nombre: true } } },
     });
   }
 
@@ -89,6 +91,7 @@ export class CuentasService {
         // Conteos básicos para que la tabla de listado pueda mostrar "X proyectos / Y programas"
         // sin tener que pedir el resumen completo por cada fila.
         include: {
+          area: { select: { id: true, nombre: true } },
           _count: {
             select: {
               proyectos: true,
@@ -113,6 +116,7 @@ export class CuentasService {
     const cuenta = await this.prisma.cuenta.findUnique({
       where: { id },
       include: {
+        area: { select: { id: true, nombre: true } },
         proyectos: {
           select: {
             id: true,
@@ -165,7 +169,9 @@ export class CuentasService {
         descripcion: dto.descripcion ?? undefined,
         monedaBase: dto.monedaBase ?? undefined,
         activa: dto.activa ?? undefined,
+        ...(dto.areaId !== undefined ? { areaId: dto.areaId } : {}),
       },
+      include: { area: { select: { id: true, nombre: true } } },
     });
   }
 

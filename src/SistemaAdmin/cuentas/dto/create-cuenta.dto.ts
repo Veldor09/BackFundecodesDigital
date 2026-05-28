@@ -7,9 +7,11 @@
 import {
   IsBoolean,
   IsEnum,
+  IsInt,
   IsOptional,
   IsString,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
 import { Currency } from '@prisma/client';
@@ -45,4 +47,11 @@ export class CreateCuentaDto {
   @IsOptional()
   @IsBoolean()
   activa?: boolean;
+
+  /** Área organizacional a la que pertenece esta cuenta. */
+  @IsOptional()
+  @Transform(({ value }) => (value !== null && value !== '' ? Number(value) : null))
+  @IsInt({ message: 'areaId debe ser un número entero' })
+  @Min(1, { message: 'areaId debe ser mayor que 0' })
+  areaId?: number | null;
 }

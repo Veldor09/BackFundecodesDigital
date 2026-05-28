@@ -1,11 +1,14 @@
 import {
+  IsArray,
   IsEmail,
   IsEnum,
+  IsInt,
   IsOptional,
   IsString,
   Length,
   Matches,
   MaxLength,
+  Min,
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
@@ -88,7 +91,7 @@ export class UpdateCollaboratorDto {
     enum: CollaboratorRol,
     example: CollaboratorRol.COLABORADORPROYECTO,
     description:
-      'Rol del colaborador. Valores: admin | colaboradorfactura | colaboradorvoluntariado | colaboradorproyecto | colaboradorcontabilidad',
+      'Rol primario del colaborador. Valores: admin | colaboradorfactura | colaboradorvoluntariado | colaboradorproyecto | colaboradorcontabilidad | colaboradorvisitacion',
   })
   @IsOptional()
   @Transform(({ value }) =>
@@ -96,9 +99,30 @@ export class UpdateCollaboratorDto {
   )
   @IsEnum(CollaboratorRol, {
     message:
-      'El rol debe ser uno de: admin, colaboradorfactura, colaboradorvoluntariado, colaboradorproyecto, colaboradorcontabilidad',
+      'El rol debe ser uno de: admin, colaboradorfactura, colaboradorvoluntariado, colaboradorproyecto, colaboradorcontabilidad, colaboradorvisitacion',
   })
   rol?: CollaboratorRol;
+
+  @ApiPropertyOptional({
+    type: [String],
+    enum: CollaboratorRol,
+    description:
+      'Lista completa de roles del colaborador (multi-rol). Reemplaza completamente los roles existentes.',
+    example: ['colaboradorproyecto', 'colaboradorvisitacion'],
+  })
+  @IsOptional()
+  @IsArray({ message: 'roles debe ser un arreglo' })
+  @Transform(({ value }) => {
+    if (!Array.isArray(value)) return value;
+    return value.map((v: any) =>
+      typeof v === 'string' ? v.trim().toLowerCase() : v,
+    );
+  })
+  @IsEnum(CollaboratorRol, {
+    each: true,
+    message: 'Cada rol debe ser un valor válido de CollaboratorRol',
+  })
+  roles?: CollaboratorRol[];
 
   @ApiPropertyOptional({
     example: 'NuevoPass123!',
@@ -127,4 +151,14 @@ export class UpdateCollaboratorDto {
     message: 'El estado debe ser ACTIVO o INACTIVO',
   })
   estado?: CollaboratorEstado;
+
+  @ApiPropertyOptional({
+    example: 1,
+    description: 'ID del área a la que pertenece el colaborador (null para desvincular)',
+  })
+  @IsOptional()
+  @Transform(({ value }) => (value !== null && value !== '' ? Number(value) : null))
+  @IsInt({ message: 'areaId debe ser un número entero' })
+  @Min(1, { message: 'areaId debe ser mayor que 0' })
+  areaId?: number | null;
 }

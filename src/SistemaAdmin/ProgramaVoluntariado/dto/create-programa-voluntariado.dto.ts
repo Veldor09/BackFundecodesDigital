@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsInt, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsEnum, IsInt, IsNumber, IsOptional, IsString, IsUrl, MaxLength, Min } from 'class-validator';
 import { Currency } from '@prisma/client';
 
 export class CreateProgramaVoluntariadoDto {
@@ -38,4 +38,14 @@ export class CreateProgramaVoluntariadoDto {
   @IsOptional()
   @IsEnum(Currency)
   monedaPresupuesto?: Currency;
+
+  @ApiPropertyOptional({ example: 'https://r2.example.com/programs/img.jpg' })
+  @IsOptional()
+  @IsUrl({}, { message: 'imagenUrl no es una URL válida' })
+  imagenUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Clave R2 para borrado posterior' })
+  @IsOptional()
+  @IsString()
+  imagenKey?: string;
 }

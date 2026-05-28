@@ -25,6 +25,8 @@ import { BillingModule } from './SistemaAdmin/billing/billing.module';
 import { ReportesModule } from './SistemaAdmin/reportes/reportes.module';
 import { ProgramaVoluntariadoModule } from './SistemaAdmin/ProgramaVoluntariado/programa-voluntariado.module';
 import { AuditoriaModule } from './SistemaAdmin/auditoria/auditoria.module';
+import { AreasModule } from './SistemaAdmin/areas/areas.module';
+import { VisitacionesModule } from './SistemaAdmin/visitaciones/visitaciones.module';
 
 // Público
 import { NewsModule } from './news/news.module';
@@ -83,6 +85,13 @@ import { AppService } from './app.service';
         MAIL_FROM: Joi.string().default('Fundecodes <no-reply@test.mlsender.net>'),
         SEND_EMAILS: Joi.string().valid('true', 'false').default('true'),
 
+        // --- Cloudflare R2 Storage ---
+        R2_ACCOUNT_ID: Joi.string().allow('').default(''),
+        R2_ACCESS_KEY_ID: Joi.string().allow('').default(''),
+        R2_SECRET_ACCESS_KEY: Joi.string().allow('').default(''),
+        R2_BUCKET: Joi.string().default('fundecodes'),
+        R2_PUBLIC_URL: Joi.string().allow('').default(''),
+
         // --- Otros ---
         TRUST_PROXY: Joi.string().valid('0', '1').default('0'),
       }),
@@ -115,6 +124,8 @@ import { AppService } from './app.service';
     ReportesModule,
     ProgramaVoluntariadoModule,
     AuditoriaModule,
+    AreasModule,
+    VisitacionesModule,
 
     // Público
     NewsModule,
