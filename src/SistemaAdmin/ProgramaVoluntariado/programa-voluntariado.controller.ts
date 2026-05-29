@@ -14,6 +14,7 @@ import { ApiBearerAuth, ApiParam, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { Permissions } from '../../common/decorators/permissions.decorator';
+import { Public } from '../../common/decorators/public.decorator';
 
 import { ProgramaVoluntariadoService } from './programa-voluntariado.service';
 import { CreateProgramaVoluntariadoDto } from './dto/create-programa-voluntariado.dto';
@@ -37,11 +38,13 @@ export class ProgramaVoluntariadoController {
 
   // ===================== PROGRAMAS =====================
 
+  @Public() // ✅ Permite a la landing listar programas sin token
   @Get()
   list(@Query() query: ListProgramaVoluntariadoQuery) {
     return this.service.list(query);
   }
 
+  @Public() // ✅ Permite ver el detalle de un programa sin token
   @Get(':id')
   get(@Param('id', ParseIntPipe) id: number) {
     return this.service.findOne(id);
