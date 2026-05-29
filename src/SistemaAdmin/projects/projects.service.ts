@@ -71,8 +71,46 @@ async update(id: number, data: any) {
 }
 
 async remove(id: number) {
-  await this.prisma.project.delete({ where: { id } });
-  return { message: 'Proyecto eliminado' };
+  const project = await this.prisma.project.findUnique({ where: { id } });
+  if (!project) throw new NotFoundException('Proyecto no encontrado');
+
+  await (this.prisma as any).$transaction(async (tx: any) => {
+    // ── 1. Eliminar registros con projectId NOT NULL (no se pueden nullificar) ──
+    // Receipts primero (referencian Payment y Project)
+    await tx.receipt.deleteMany({ where: { projectId: id } });
+    // BillingInvoice (referencia BillingRequest y Project)
+    await tx.billingInvoice.deleteMany({ where: { projectId: id } });
+    // Registros contables
+    await tx.programAllocation.deleteMany({ where: { projectId: id } });
+    await tx.documentoContable.deleteMany({ where: { projectId: id } });
+    await tx.presupuesto.deleteMany({ where: { projectId: id } });
+
+    // ── 2. Nullificar referencias opcionales (preservar historial) ──
+    // Transacciones NUNCA se borran (política contable del schema)
+    await tx.transaccion.updateMany({
+      where: { projectId: id },
+      data: { projectId: null },
+    });
+    await tx.payment.updateMany({
+      where: { projectId: id },
+      data: { projectId: null },
+    });
+    await tx.billingRequest.updateMany({
+      where: { projectId: id },
+      data: { projectId: null },
+    });
+    await tx.solicitudCompra.updateMany({
+      where: { projectId: id },
+      data: { projectId: null },
+    });
+
+    // ── 3. Eliminar el proyecto ──
+    // ProjectImage, ProjectDocument y ColaboradorAsignacion tienen
+    // onDelete: Cascade en el schema → Prisma los elimina automáticamente.
+    await tx.project.delete({ where: { id } });
+  });
+
+  return { message: 'Proyecto dado de baja correctamente' };
 }
 
 async addImage(
