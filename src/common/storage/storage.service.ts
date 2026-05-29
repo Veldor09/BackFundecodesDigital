@@ -85,10 +85,12 @@ export class StorageService {
       // Modo local: guarda el archivo en ./uploads/<key> y lo sirve vía el
       // servidor estático que main.ts ya monta en /uploads/.
       const port = this.config.get<string>('PORT') ?? '4000';
+      const appUrl = (this.config.get<string>('APP_URL') ?? '').replace(/\/+$/, '');
+      const base = appUrl || `http://localhost:${port}`;
       const destPath = path.join(process.cwd(), 'uploads', key);
       fs.mkdirSync(path.dirname(destPath), { recursive: true });
       fs.writeFileSync(destPath, file);
-      const localUrl = `http://localhost:${port}/uploads/${key}`;
+      const localUrl = `${base}/uploads/${key}`;
       this.logger.debug(`[LOCAL] Saved to disk: ${destPath}`);
       return {
         url: localUrl,
@@ -145,7 +147,9 @@ export class StorageService {
   async presign(key: string, expiresInSeconds = 3600): Promise<string> {
     if (this.localMode || !this.client) {
       const port = this.config.get<string>('PORT') ?? '4000';
-      return `http://localhost:${port}/uploads/${key}`;
+      const appUrl = (this.config.get<string>('APP_URL') ?? '').replace(/\/+$/, '');
+      const base = appUrl || `http://localhost:${port}`;
+      return `${base}/uploads/${key}`;
     }
 
     const cmd = new GetObjectCommand({ Bucket: this.bucket, Key: key });
