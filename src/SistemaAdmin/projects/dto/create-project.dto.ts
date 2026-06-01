@@ -29,7 +29,7 @@ export class CreateProjectDto {
   @Transform(({ value }) => trim(value))
   @IsNotEmpty({ message: 'title no puede estar vacío' })
   @MinLength(3, { message: 'title debe tener al menos 3 caracteres' })
-  @MaxLength(100, { message: 'title no puede exceder 100 caracteres' })
+  @MaxLength(150, { message: 'title no puede exceder 150 caracteres' })
   title!: string;
 
   // opcional: si no viene, se genera desde title + place
@@ -40,6 +40,7 @@ export class CreateProjectDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(150, { message: 'summary no puede exceder 150 caracteres' })
   @Transform(({ value }) => trim(value))
   summary?: string;
 

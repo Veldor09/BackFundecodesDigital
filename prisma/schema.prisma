@@ -373,7 +373,7 @@ enum PasswordChangeType {
 model PasswordChangeLog {
   id        Int                @id @default(autoincrement())
   userId    Int
-  user      User               @relation(fields: [userId], references: [id])
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   ip        String?
   type      PasswordChangeType @default(RESET)
   createdAt DateTime           @default(now())

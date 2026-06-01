@@ -146,6 +146,7 @@ export class SolicitudesService {
     rol: string,
     nuevoEstado: string,
     comentario?: string | null,
+    siguientePaso?: string | null,
   ) {
     const solicitud = await this.prisma.solicitudCompra.findUnique({
       where: { id: idSolicitud },
@@ -155,28 +156,73 @@ export class SolicitudesService {
     if (!solicitud || !solicitud.usuario?.email) return;
 
     const { email, name } = solicitud.usuario;
-    const mensaje = comentario
-      ? `Comentario: ${comentario}`
-      : `Sin comentarios adicionales.`;
+    const comentarioHtml = comentario
+      ? `<p><b>Comentario:</b> ${comentario}</p>`
+      : `<p>Sin comentarios adicionales.</p>`;
+    const siguientePasoHtml = siguientePaso
+      ? `<p style="background:#f0f9ff;border-left:4px solid #0ea5e9;padding:10px 14px;border-radius:4px;margin-top:12px">
+           <b>Próximo paso:</b> ${siguientePaso}
+         </p>`
+      : '';
 
     try {
       await this.emailService.sendMail({
         to: email,
-        subject: `Actualización de solicitud #${solicitud.id}`,
-        text: `Hola ${name ?? 'usuario'}, tu solicitud "${solicitud.titulo}" cambió de estado (${rol}) a ${nuevoEstado}. ${mensaje}`,
+        subject: `Actualización de solicitud #${solicitud.id}: ${nuevoEstado}`,
+        text: `Hola ${name ?? 'usuario'}, tu solicitud "${solicitud.titulo}" fue actualizada por ${rol} al estado ${nuevoEstado}. ${comentario ?? 'Sin comentarios.'} ${siguientePaso ?? ''}`,
         html: `
-          <div style="font-family:Arial, sans-serif; line-height:1.6">
-            <p>Hola ${name ?? 'usuario'},</p>
+          <div style="font-family:Arial,sans-serif;line-height:1.6;color:#1e293b;max-width:560px;margin:auto">
+            <p>Hola <b>${name ?? 'usuario'}</b>,</p>
             <p>Tu solicitud <b>"${solicitud.titulo}"</b> fue actualizada por el <b>${rol}</b>:</p>
             <p><b>Nuevo estado:</b> ${nuevoEstado}</p>
-            <p>${mensaje}</p>
-            <p>Saludos,<br/>Equipo FUNDECODES</p>
+            ${comentarioHtml}
+            ${siguientePasoHtml}
+            <p style="margin-top:24px">Saludos,<br/>Equipo FUNDECODES</p>
           </div>
         `,
       });
       console.log(`[MAIL] ✓ Notificación enviada a ${email}`);
     } catch (e) {
       console.error('[MAIL] ✗ Error al enviar correo:', e);
+    }
+  }
+
+  // =====================================================
+  // 🔹 NOTIFICAR PAGO REALIZADO
+  // =====================================================
+  private async notificarPago(idSolicitud: number, referencia?: string | null) {
+    const solicitud = await this.prisma.solicitudCompra.findUnique({
+      where: { id: idSolicitud },
+      include: { usuario: true },
+    });
+
+    if (!solicitud || !solicitud.usuario?.email) return;
+
+    const { email, name } = solicitud.usuario;
+    const referenciaHtml = referencia
+      ? `<p><b>Referencia de pago:</b> ${referencia}</p>`
+      : '';
+
+    try {
+      await this.emailService.sendMail({
+        to: email,
+        subject: `¡Pago realizado! Solicitud #${solicitud.id}`,
+        text: `Hola ${name ?? 'usuario'}, el pago de tu solicitud "${solicitud.titulo}" ha sido realizado. ${referencia ? `Referencia: ${referencia}.` : ''}`,
+        html: `
+          <div style="font-family:Arial,sans-serif;line-height:1.6;color:#1e293b;max-width:560px;margin:auto">
+            <p>Hola <b>${name ?? 'usuario'}</b>,</p>
+            <p>El pago de tu solicitud <b>"${solicitud.titulo}"</b> ha sido <b style="color:#16a34a">realizado exitosamente</b>.</p>
+            ${referenciaHtml}
+            <p style="background:#f0fdf4;border-left:4px solid #16a34a;padding:10px 14px;border-radius:4px;margin-top:12px">
+              Tu solicitud ha concluido. No se requiere ninguna acción adicional de tu parte.
+            </p>
+            <p style="margin-top:24px">Saludos,<br/>Equipo FUNDECODES</p>
+          </div>
+        `,
+      });
+      console.log(`[MAIL] ✓ Notificación de pago enviada a ${email}`);
+    } catch (e) {
+      console.error('[MAIL] ✗ Error al enviar correo de pago:', e);
     }
   }
 
@@ -236,7 +282,14 @@ export class SolicitudesService {
       },
     });
 
-    await this.notificarCambioEstado(id, 'contadora', estadoContadora, comentarioContadora);
+    const siguientePasoContadora =
+      estadoContadora === 'VALIDADA'
+        ? 'Tu solicitud está esperando la aprobación del director.'
+        : estadoContadora === 'DEVUELTA'
+        ? 'Por favor revisa los comentarios y vuelve a someter la solicitud.'
+        : null;
+
+    await this.notificarCambioEstado(id, 'contadora', estadoContadora, comentarioContadora, siguientePasoContadora);
     return updated;
   }
 
@@ -296,7 +349,59 @@ export class SolicitudesService {
       },
     });
 
-    await this.notificarCambioEstado(id, 'director', estadoDirector, comentarioDirector);
+    const siguientePasoDirector =
+      estadoDirector === 'APROBADA'
+        ? 'Tu solicitud ha sido aprobada y está en espera del pago por parte del equipo de contabilidad.'
+        : estadoDirector === 'RECHAZADA'
+        ? 'Puedes contactar al equipo administrativo si tienes dudas sobre esta decisión.'
+        : null;
+
+    await this.notificarCambioEstado(id, 'director', estadoDirector, comentarioDirector, siguientePasoDirector);
+    return updated;
+  }
+
+  // =====================================================
+  // 🔹 MARCAR COMO PAGADA
+  // =====================================================
+  async marcarPagada(
+    id: number,
+    referencia: string | null,
+    actor?: { userId?: number | null; email?: string | null; name?: string | null } | number | null,
+  ) {
+    const solicitud = await this.prisma.solicitudCompra.findUnique({ where: { id } });
+    if (!solicitud) throw new NotFoundException('Solicitud no encontrada');
+
+    const userId = typeof actor === 'number' ? actor : actor?.userId ?? null;
+    const userEmail = typeof actor === 'object' ? actor?.email ?? null : null;
+    const userName = typeof actor === 'object' ? actor?.name ?? null : null;
+
+    const updated = await (this.prisma as any).solicitudCompra.update({
+      where: { id },
+      data: { estado: 'PAGADA' },
+      include: SOLICITUD_INCLUDE,
+    });
+
+    await this.prisma.solicitudHistorial.create({
+      data: {
+        solicitudId: id,
+        estadoAnterior: solicitud.estado,
+        estadoNuevo: 'PAGADA',
+        userId: userId ?? null,
+      },
+    });
+
+    await this.auditoria.registrar({
+      userId: userId ?? null,
+      userEmail,
+      userName,
+      accion: 'SOLICITUD_PAGADA',
+      entidad: 'Solicitud',
+      entidadId: id,
+      detalle: `Solicitud #${id} "${solicitud.titulo}" marcada como PAGADA.${referencia ? ` Referencia: ${referencia}.` : ''}`,
+      metadata: { estadoAnterior: solicitud.estado, referencia: referencia ?? null },
+    });
+
+    await this.notificarPago(id, referencia);
     return updated;
   }
 

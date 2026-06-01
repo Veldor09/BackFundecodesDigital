@@ -173,6 +173,34 @@ export class SolicitudesController {
   }
 
   // =====================================================
+  // 🔹 MARCAR COMO PAGADA
+  // =====================================================
+  @Patch(':id/pagar')
+  @ApiOperation({ summary: 'Marcar solicitud como pagada y notificar al solicitante' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        referencia: { type: 'string', example: 'TRF-20260530-001', nullable: true },
+      },
+    },
+  })
+  @ApiOkResponse({ description: 'Solicitud marcada como PAGADA' })
+  marcarPagada(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('referencia') referencia: string | undefined,
+    @Req() req: Request & { user?: { id?: number; userId?: number; email?: string; name?: string } },
+  ) {
+    const actor = {
+      userId: req.user?.userId ?? req.user?.id ?? null,
+      email: req.user?.email ?? null,
+      name: req.user?.name ?? null,
+    };
+    return this.solicitudesService.marcarPagada(id, referencia ?? null, actor);
+  }
+
+  // =====================================================
   // 🔹 DECISIÓN DEL DIRECTOR
   // =====================================================
   @Patch(':id/decision-director')

@@ -297,8 +297,10 @@ export class UsersService {
       throw new BadRequestException('Algún rol no existe');
     }
 
+    // Reemplazo completo: borra los actuales y asigna los nuevos
+    await this.prisma.userRole.deleteMany({ where: { userId } });
     await this.prisma.userRole.createMany({
-      data: roles.map((r) => ({ userId, roleId: r.id })), // <- r.id tipado
+      data: roles.map((r) => ({ userId, roleId: r.id })),
       skipDuplicates: true,
     });
 

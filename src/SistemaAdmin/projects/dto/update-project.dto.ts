@@ -7,6 +7,7 @@ import {
   IsNotEmpty,
   IsEnum,
   IsDateString,
+  MaxLength,
   Min,
 } from 'class-validator';
 import { Currency } from '@prisma/client';
@@ -20,6 +21,7 @@ export class UpdateProjectDto {
   @IsString()
   @Transform(({ value }) => trim(value))
   @IsNotEmpty({ message: 'title no puede estar vacío' })
+  @MaxLength(150, { message: 'title no puede exceder 150 caracteres' })
   title?: string;
 
   // si viene, se normaliza; si no viene pero cambian title/place, se regenera
@@ -31,6 +33,7 @@ export class UpdateProjectDto {
   @IsOptional()
   @IsString()
   @Transform(({ value }) => trim(value))
+  @MaxLength(150, { message: 'summary no puede exceder 150 caracteres' })
   summary?: string;
 
   @IsOptional()

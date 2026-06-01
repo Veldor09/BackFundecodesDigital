@@ -5,12 +5,13 @@ import { Currency } from '@prisma/client';
 export class CreateProgramaVoluntariadoDto {
   @ApiProperty({ example: 'Programa Reforestación 2026' })
   @IsString()
-  @MaxLength(160)
+  @MaxLength(150)
   nombre: string;
 
   @ApiPropertyOptional({ example: 'Programa de apoyo comunitario...' })
   @IsOptional()
   @IsString()
+  @MaxLength(1000)
   descripcion?: string;
 
   @ApiProperty({ example: 'Nicoya, Guanacaste' })
