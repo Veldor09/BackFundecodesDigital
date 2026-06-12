@@ -11,6 +11,9 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as sharp from 'sharp';
+
+const IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
 export interface UploadedFile {
   url: string;         // URL pública permanente
@@ -78,7 +81,16 @@ export class StorageService {
     original: string,
     folder = 'uploads',
   ): Promise<UploadedFile> {
-    const ext = (original.split('.').pop() ?? 'bin').toLowerCase();
+    let buffer = file;
+    let mimeType = mimetype;
+    let ext = (original.split('.').pop() ?? 'bin').toLowerCase();
+
+    if (IMAGE_MIME_TYPES.has(mimetype)) {
+      buffer = await sharp(file).webp({ quality: 80 }).toBuffer();
+      mimeType = 'image/webp';
+      ext = 'webp';
+    }
+
     const key = `${folder}/${crypto.randomUUID()}.${ext}`;
 
     if (this.localMode || !this.client) {
@@ -89,15 +101,15 @@ export class StorageService {
       const base = appUrl || `http://localhost:${port}`;
       const destPath = path.join(process.cwd(), 'uploads', key);
       fs.mkdirSync(path.dirname(destPath), { recursive: true });
-      fs.writeFileSync(destPath, file);
+      fs.writeFileSync(destPath, buffer);
       const localUrl = `${base}/uploads/${key}`;
       this.logger.debug(`[LOCAL] Saved to disk: ${destPath}`);
       return {
         url: localUrl,
         key,
         name: original,
-        size: file.length,
-        mimeType: mimetype,
+        size: buffer.length,
+        mimeType,
       };
     }
 
@@ -106,8 +118,8 @@ export class StorageService {
         new PutObjectCommand({
           Bucket: this.bucket,
           Key: key,
-          Body: file,
-          ContentType: mimetype,
+          Body: buffer,
+          ContentType: mimeType,
           // Acceso público — asegúrate de que el bucket sea público o use dominio custom
           CacheControl: 'public, max-age=31536000, immutable',
         }),
@@ -115,7 +127,7 @@ export class StorageService {
 
       const url = `${this.publicUrl}/${key}`;
       this.logger.debug(`Uploaded: ${key} → ${url}`);
-      return { url, key, name: original, size: file.length, mimeType: mimetype };
+      return { url, key, name: original, size: buffer.length, mimeType };
     } catch (err: any) {
       this.logger.error(`R2 upload failed: ${err?.message}`, err?.stack);
       throw new BadRequestException(`Error al subir el archivo: ${err?.message ?? 'desconocido'}`);
