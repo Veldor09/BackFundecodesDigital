@@ -299,7 +299,7 @@ export class AuthService {
 
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { password },
+      data: { password, verified: true },
     });
 
     await this.safeAuditCreate({
