@@ -129,13 +129,25 @@ export class ReportesService {
         });
       }
 
-      // 🆕 Contabilidad: agregamos transacciones (ingresos/egresos) por proyecto.
       if (['contabilidad', 'transacciones', 'transactions'].includes(key)) {
         return this.prisma.transaccion.findMany({
           where: { fecha: { gte: start, lte: end } },
           include: {
             project: { select: { id: true, title: true } },
           },
+        });
+      }
+
+      if (['visitacion', 'visitaciones'].includes(key)) {
+        return this.prisma.visitacion.findMany({
+          where: { fecha: { gte: start, lte: end } },
+          orderBy: { fecha: 'desc' },
+        });
+      }
+
+      if (['area', 'areas'].includes(key)) {
+        return this.prisma.area.findMany({
+          where: { createdAt: { gte: start, lte: end } },
         });
       }
 
@@ -202,20 +214,16 @@ export class ReportesService {
   doc.font('Helvetica').fillColor('#000');
   for (const [modulo, detalle] of Object.entries<any>(detalles)) {
     const nombreModulo =
-      modulo === 'billing'
-        ? 'Facturación'
-        : modulo === 'collaborators'
-        ? 'Colaboradores'
-        : modulo === 'volunteers'
-        ? 'Voluntarios'
-        : modulo === 'solicitudes'
-        ? 'Solicitudes'
-        : modulo === 'programas'
-        ? 'Programas de voluntariado'
-        : modulo === 'sanciones'
-        ? 'Sanciones'
-        : modulo === 'contabilidad'
-        ? 'Contabilidad (transacciones)'
+      modulo === 'projects' ? 'Proyectos'
+        : modulo === 'billing' ? 'Facturación'
+        : modulo === 'collaborators' ? 'Colaboradores'
+        : modulo === 'volunteers' ? 'Voluntarios'
+        : modulo === 'solicitudes' ? 'Solicitudes'
+        : modulo === 'programas' ? 'Programas de voluntariado'
+        : modulo === 'sanciones' ? 'Sanciones'
+        : modulo === 'contabilidad' ? 'Contabilidad (transacciones)'
+        : modulo === 'visitaciones' ? 'Visitación'
+        : modulo === 'areas' ? 'Áreas'
         : modulo.charAt(0).toUpperCase() + modulo.slice(1);
     doc.text(`   • ${nombreModulo}: ${detalle.total} registro${detalle.total !== 1 ? 's' : ''}`);
   }
@@ -266,6 +274,43 @@ export class ReportesService {
       { key: 'email', label: 'Email', width: 150 },
       { key: 'telefono', label: 'Teléfono', width: 90 },
     ],
+    programas: [
+      { key: 'id', label: 'ID', width: 35 },
+      { key: 'nombre', label: 'Nombre', width: 130 },
+      { key: 'lugar', label: 'Lugar', width: 100 },
+      { key: 'limiteParticipantes', label: 'Cupo máx.', width: 75 },
+      { key: 'totalVoluntarios', label: 'Voluntarios', width: 80 },
+      { key: 'totalHoras', label: 'Horas totales', width: 80 },
+    ],
+    sanciones: [
+      { key: 'id', label: 'ID', width: 35 },
+      { key: 'tipo', label: 'Tipo', width: 80 },
+      { key: 'motivo', label: 'Motivo', width: 130 },
+      { key: 'descripcion', label: 'Descripción', width: 160 },
+      { key: 'createdAt', label: 'Fecha', width: 75, format: (v) => this.formatDate(v) },
+    ],
+    contabilidad: [
+      { key: 'id', label: 'ID', width: 35 },
+      { key: 'tipo', label: 'Tipo', width: 80 },
+      { key: 'monto', label: 'Monto', width: 110, format: (v) => this.formatMoney(v) },
+      { key: 'fecha', label: 'Fecha', width: 80, format: (v) => this.formatDate(v) },
+      { key: 'descripcion', label: 'Descripción', width: 160 },
+    ],
+    visitaciones: [
+      { key: 'id', label: 'ID', width: 35 },
+      { key: 'fecha', label: 'Fecha', width: 90, format: (v) => this.formatDate(v) },
+      { key: 'totalPersonas', label: 'Total Personas', width: 100 },
+      { key: 'nacionales', label: 'Nacionales', width: 90 },
+      { key: 'extranjeros', label: 'Extranjeros', width: 90 },
+      { key: 'notas', label: 'Notas', width: 110 },
+    ],
+    areas: [
+      { key: 'id', label: 'ID', width: 35 },
+      { key: 'nombre', label: 'Nombre', width: 160 },
+      { key: 'descripcion', label: 'Descripción', width: 210 },
+      { key: 'activa', label: 'Activa', width: 60, format: (v) => (v ? 'Sí' : 'No') },
+      { key: 'createdAt', label: 'Creada', width: 75, format: (v) => this.formatDate(v) },
+    ],
   };
 
   let primerModulo = true;
@@ -281,17 +326,17 @@ export class ReportesService {
     }
 
     const nombreModulo =
-  modulo === 'projects'
-    ? 'PROYECTOS'
-    : modulo === 'billing'
-    ? 'FACTURACIÓN'
-    : modulo === 'collaborators'
-    ? 'COLABORADORES'
-    : modulo === 'volunteers'
-    ? 'VOLUNTARIOS'
-    : modulo === 'solicitudes'
-    ? 'SOLICITUDES'
-    : modulo.toUpperCase();
+      modulo === 'projects' ? 'PROYECTOS'
+      : modulo === 'billing' ? 'FACTURACIÓN'
+      : modulo === 'collaborators' ? 'COLABORADORES'
+      : modulo === 'volunteers' ? 'VOLUNTARIOS'
+      : modulo === 'solicitudes' ? 'SOLICITUDES'
+      : modulo === 'programas' ? 'PROGRAMAS DE VOLUNTARIADO'
+      : modulo === 'sanciones' ? 'SANCIONES'
+      : modulo === 'contabilidad' ? 'CONTABILIDAD'
+      : modulo === 'visitaciones' ? 'VISITACIÓN'
+      : modulo === 'areas' ? 'ÁREAS'
+      : modulo.toUpperCase();
 
     doc.moveDown(1.2);
     doc.fontSize(14).fillColor('#003366').text(nombreModulo, 65, doc.y, {
@@ -455,17 +500,17 @@ async generarExcel(data: any): Promise<Buffer> {
 
   for (const [modulo, detalle] of Object.entries<any>(data.detalles)) {
     const nombreModulo =
-      modulo === 'projects'
-        ? 'Proyectos'
-        : modulo === 'billing'
-        ? 'Facturación'
-        : modulo === 'collaborators'
-        ? 'Colaboradores'
-        : modulo === 'volunteers'
-        ? 'Voluntarios'
-        : modulo === 'solicitudes'
-        ? 'Solicitudes'
-        : modulo.charAt(0).toUpperCase() + modulo.slice(1);
+      modulo === 'projects' ? 'Proyectos'
+      : modulo === 'billing' ? 'Facturación'
+      : modulo === 'collaborators' ? 'Colaboradores'
+      : modulo === 'volunteers' ? 'Voluntarios'
+      : modulo === 'solicitudes' ? 'Solicitudes'
+      : modulo === 'programas' ? 'Programas de voluntariado'
+      : modulo === 'sanciones' ? 'Sanciones'
+      : modulo === 'contabilidad' ? 'Contabilidad'
+      : modulo === 'visitaciones' ? 'Visitación'
+      : modulo === 'areas' ? 'Áreas'
+      : modulo.charAt(0).toUpperCase() + modulo.slice(1);
 
     sheet.addRow([nombreModulo, detalle.total]);
   }
@@ -481,17 +526,17 @@ async generarExcel(data: any): Promise<Buffer> {
     if (items.length === 0) continue;
 
     const nombreModulo =
-      modulo === 'projects'
-        ? 'PROYECTOS'
-        : modulo === 'billing'
-        ? 'FACTURACIÓN'
-        : modulo === 'collaborators'
-        ? 'COLABORADORES'
-        : modulo === 'volunteers'
-        ? 'VOLUNTARIOS'
-        : modulo === 'solicitudes'
-        ? 'SOLICITUDES'
-        : modulo.toUpperCase();
+      modulo === 'projects' ? 'PROYECTOS'
+      : modulo === 'billing' ? 'FACTURACIÓN'
+      : modulo === 'collaborators' ? 'COLABORADORES'
+      : modulo === 'volunteers' ? 'VOLUNTARIOS'
+      : modulo === 'solicitudes' ? 'SOLICITUDES'
+      : modulo === 'programas' ? 'PROGRAMAS DE VOLUNTARIADO'
+      : modulo === 'sanciones' ? 'SANCIONES'
+      : modulo === 'contabilidad' ? 'CONTABILIDAD'
+      : modulo === 'visitaciones' ? 'VISITACIÓN'
+      : modulo === 'areas' ? 'ÁREAS'
+      : modulo.toUpperCase();
 
     // Nueva hoja para el módulo
     const moduloSheet = workbook.addWorksheet(nombreModulo);
@@ -550,6 +595,48 @@ async generarExcel(data: any): Promise<Buffer> {
         { key: 'nombreCompleto', label: 'Nombre Completo' },
         { key: 'email', label: 'Email' },
         { key: 'telefono', label: 'Teléfono' },
+      ];
+    } else if (modulo === 'programas') {
+      columnas = [
+        { key: 'id', label: 'ID' },
+        { key: 'nombre', label: 'Nombre' },
+        { key: 'lugar', label: 'Lugar' },
+        { key: 'limiteParticipantes', label: 'Cupo máximo' },
+        { key: 'totalVoluntarios', label: 'Voluntarios asignados' },
+        { key: 'totalHoras', label: 'Horas totales' },
+      ];
+    } else if (modulo === 'sanciones') {
+      columnas = [
+        { key: 'id', label: 'ID' },
+        { key: 'tipo', label: 'Tipo' },
+        { key: 'motivo', label: 'Motivo' },
+        { key: 'descripcion', label: 'Descripción' },
+        { key: 'createdAt', label: 'Fecha' },
+      ];
+    } else if (modulo === 'contabilidad') {
+      columnas = [
+        { key: 'id', label: 'ID' },
+        { key: 'tipo', label: 'Tipo' },
+        { key: 'monto', label: 'Monto' },
+        { key: 'fecha', label: 'Fecha' },
+        { key: 'descripcion', label: 'Descripción' },
+      ];
+    } else if (modulo === 'visitaciones') {
+      columnas = [
+        { key: 'id', label: 'ID' },
+        { key: 'fecha', label: 'Fecha' },
+        { key: 'totalPersonas', label: 'Total Personas' },
+        { key: 'nacionales', label: 'Nacionales' },
+        { key: 'extranjeros', label: 'Extranjeros' },
+        { key: 'notas', label: 'Notas' },
+      ];
+    } else if (modulo === 'areas') {
+      columnas = [
+        { key: 'id', label: 'ID' },
+        { key: 'nombre', label: 'Nombre' },
+        { key: 'descripcion', label: 'Descripción' },
+        { key: 'activa', label: 'Activa' },
+        { key: 'createdAt', label: 'Fecha de creación' },
       ];
     } else {
       columnas = Object.keys(items[0] || {}).slice(0, 6).map((key) => ({
