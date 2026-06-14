@@ -4,6 +4,10 @@ import { FiltroInformeDto, TipoPeriodo } from './dto/filtro-informe.dto';
 import PDFDocument = require('pdfkit');
 import * as ExcelJS from 'exceljs';
 import { Buffer } from 'buffer';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const LOGO_PATH = path.join(__dirname, 'assets', 'logo.png');
 
 @Injectable()
 export class ReportesService {
@@ -130,12 +134,21 @@ export class ReportesService {
       }
 
       if (['contabilidad', 'transacciones', 'transactions'].includes(key)) {
-        return this.prisma.transaccion.findMany({
+        const txs = await this.prisma.transaccion.findMany({
           where: { fecha: { gte: start, lte: end } },
           include: {
             project: { select: { id: true, title: true } },
           },
+          orderBy: { fecha: 'asc' },
         });
+        // Agregar nombre del proyecto como campo plano para el PDF
+        return txs.map((t) => ({
+          ...t,
+          proyectoNombre: (t as any).project?.title ?? t.programa ?? '-',
+          montoNum: typeof t.monto === 'object' && 'toNumber' in (t.monto as any)
+            ? (t.monto as any).toNumber()
+            : Number(t.monto ?? 0),
+        }));
       }
 
       if (['visitacion', 'visitaciones'].includes(key)) {
@@ -182,134 +195,170 @@ export class ReportesService {
   }
 
   async generarPdf(data: any): Promise<Buffer> {
-  const doc = new PDFDocument({ margin: 65, size: 'A4', bufferPages: true });
+  const MARGIN = 55;
+  const PAGE_W = 595.28; // A4 width in pts
+  const HEADER_H = 80;
+  const BRAND = '#003366';
+
+  const doc = new PDFDocument({ margin: MARGIN, size: 'A4', bufferPages: true });
   const buffers: Uint8Array[] = [];
-  doc.on('data', buffers.push.bind(buffers));
+  doc.on('data', (chunk) => buffers.push(chunk));
 
   const fechaGeneracion = new Date().toLocaleString('es-CR', {
     dateStyle: 'long',
     timeStyle: 'short',
   });
 
-  // ===== ENCABEZADO =====
-  doc.fontSize(18).fillColor('#003366').text('FUNDECODES DIGITAL', { align: 'center' }).moveDown(0.3);
-  doc.fontSize(14).fillColor('#000').text('INFORME CONSOLIDADO DE GESTIÓN', { align: 'center' }).moveDown(1);
-  doc.fontSize(10).fillColor('gray').text(`Generado el: ${fechaGeneracion}`, { align: 'right' }).moveDown(1.5);
+  // ===== ENCABEZADO INSTITUCIONAL =====
+  // Barra azul de fondo
+  doc.save();
+  doc.rect(0, 0, PAGE_W, HEADER_H).fill(BRAND);
+  doc.restore();
+
+  // Logo (si existe)
+  let logoLoaded = false;
+  if (fs.existsSync(LOGO_PATH)) {
+    try {
+      doc.image(LOGO_PATH, MARGIN, 12, { height: 54, fit: [100, 54] });
+      logoLoaded = true;
+    } catch { /* sin logo */ }
+  }
+
+  const textStartX = logoLoaded ? MARGIN + 108 : MARGIN;
+
+  doc.font('Helvetica-Bold').fontSize(16).fillColor('white')
+    .text('FUNDECODES DIGITAL', textStartX, 20, { align: 'left' });
+  doc.font('Helvetica').fontSize(10).fillColor('#cce0f5')
+    .text('Sistema Administrativo de Gestión', textStartX, 42);
+  doc.font('Helvetica').fontSize(8).fillColor('#aaccee')
+    .text('Informe Consolidado de Gestión', textStartX, 56);
+
+  // Fecha en esquina derecha del header
+  doc.font('Helvetica').fontSize(8).fillColor('#cce0f5')
+    .text(`Generado: ${fechaGeneracion}`, MARGIN, 56, { align: 'right', width: PAGE_W - MARGIN * 2 });
+
+  // Línea divisora bajo el header
+  doc.moveTo(0, HEADER_H).lineTo(PAGE_W, HEADER_H).strokeColor('#002244').lineWidth(1.5).stroke();
+
+  doc.moveDown(0);
+  doc.y = HEADER_H + 20;
 
   const { filtros, totalRegistros, detalles } = data;
 
-  doc.fontSize(12).fillColor('#003366').font('Helvetica-Bold').text('Resumen General', 70, doc.y);
-  doc.moveDown(0.8);
-  doc.fontSize(10).fillColor('#003366').font('Helvetica-Bold');
-  doc.text('Periodo analizado:', 70, doc.y, { continued: true });
-  doc.font('Helvetica').fillColor('#000').text(
-    filtros.periodo === 'ANIO'
-      ? filtros.anio
-      : `${this.formatDate(filtros.fechaInicio)} a ${this.formatDate(filtros.fechaFin)}`
-  );
-  doc.font('Helvetica-Bold').fillColor('#003366').text('Tipo de reporte:', 70, doc.y, { continued: true });
+  // ===== RESUMEN GENERAL =====
+  doc.font('Helvetica-Bold').fontSize(13).fillColor(BRAND)
+    .text('Resumen General', MARGIN, doc.y);
+  doc.moveDown(0.5);
+
+  const infoY = doc.y;
+  doc.font('Helvetica-Bold').fontSize(9.5).fillColor(BRAND)
+    .text('Periodo analizado:', MARGIN, infoY, { continued: true, width: 130 });
+  doc.font('Helvetica').fillColor('#000')
+    .text(
+      filtros.periodo === 'ANIO'
+        ? String(filtros.anio)
+        : `${this.formatDate(filtros.fechaInicio)} al ${this.formatDate(filtros.fechaFin)}`,
+      { continued: false }
+    );
+
+  doc.font('Helvetica-Bold').fontSize(9.5).fillColor(BRAND)
+    .text('Tipo de reporte:', MARGIN, doc.y, { continued: true, width: 130 });
   doc.font('Helvetica').fillColor('#000').text(filtros.tipoReporte);
-  doc.font('Helvetica-Bold').fillColor('#003366').text('Módulos incluidos:', 70);
-  doc.moveDown(0.3);
-  doc.font('Helvetica').fillColor('#000');
+
+  doc.font('Helvetica-Bold').fontSize(9.5).fillColor(BRAND).text('Módulos incluidos:', MARGIN);
+  doc.moveDown(0.2);
+  doc.font('Helvetica').fontSize(9).fillColor('#000');
   for (const [modulo, detalle] of Object.entries<any>(detalles)) {
-    const nombreModulo =
-      modulo === 'projects' ? 'Proyectos'
-        : modulo === 'billing' ? 'Facturación'
-        : modulo === 'collaborators' ? 'Colaboradores'
-        : modulo === 'volunteers' ? 'Voluntarios'
-        : modulo === 'solicitudes' ? 'Solicitudes'
-        : modulo === 'programas' ? 'Programas de voluntariado'
-        : modulo === 'sanciones' ? 'Sanciones'
-        : modulo === 'contabilidad' ? 'Contabilidad (transacciones)'
-        : modulo === 'visitaciones' ? 'Visitación'
-        : modulo === 'areas' ? 'Áreas'
-        : modulo.charAt(0).toUpperCase() + modulo.slice(1);
-    doc.text(`   • ${nombreModulo}: ${detalle.total} registro${detalle.total !== 1 ? 's' : ''}`);
+    const nombre = this.labelModulo(modulo);
+    doc.text(`   • ${nombre}: ${detalle.total} registro${detalle.total !== 1 ? 's' : ''}`, { indent: 8 });
   }
-  doc.moveDown(0.6);
-  doc.font('Helvetica-Bold').fillColor('#003366').text('Total general:', 70, doc.y, { continued: true });
-  doc.font('Helvetica').fillColor('#000').text(`${totalRegistros} registro${totalRegistros !== 1 ? 's' : ''}`);
+  doc.moveDown(0.5);
+  doc.font('Helvetica-Bold').fontSize(9.5).fillColor(BRAND)
+    .text('Total general:', MARGIN, doc.y, { continued: true, width: 130 });
+  doc.font('Helvetica').fillColor('#000')
+    .text(`${totalRegistros} registro${totalRegistros !== 1 ? 's' : ''}`);
   doc.moveDown(1);
-  doc.moveTo(70, doc.y).lineTo(530, doc.y).strokeColor('#cccccc').stroke();
+  doc.moveTo(MARGIN, doc.y).lineTo(PAGE_W - MARGIN, doc.y).strokeColor('#cccccc').lineWidth(0.5).stroke();
   doc.moveDown(1.5);
 
   // ===== DETALLES POR MÓDULO =====
-  const config = {
+  const config: Record<string, any[]> = {
     projects: [
-      { key: 'id', label: 'ID', width: 35 },
-      { key: 'title', label: 'Título', width: 110 },
-      { key: 'place', label: 'Lugar', width: 110 },
-      { key: 'area', label: 'Área', width: 100 },
-      { key: 'status', label: 'Estado', width: 70 },
-      { key: 'createdAt', label: 'Creado', width: 70, format: (v) => this.formatDate(v) },
+      { key: 'id', label: 'ID', width: 30 },
+      { key: 'title', label: 'Título del proyecto', width: 130 },
+      { key: 'place', label: 'Lugar', width: 100 },
+      { key: 'area', label: 'Área', width: 90 },
+      { key: 'status', label: 'Estado', width: 75, format: (v) => this.traducirEstado(v) },
+      { key: 'createdAt', label: 'Fecha creación', width: 80, format: (v) => this.formatDate(v) },
     ],
     billing: [
-      { key: 'id', label: 'ID', width: 35 },
+      { key: 'id', label: 'ID', width: 30 },
       { key: 'amount', label: 'Monto', width: 90, format: (v) => this.formatMoney(v) },
-      { key: 'concept', label: 'Concepto', width: 150 },
-      { key: 'status', label: 'Estado', width: 80, format: (v) => this.traducirEstado(v) },
-      { key: 'createdAt', label: 'Fecha', width: 80, format: (v) => this.formatDate(v) },
+      { key: 'concept', label: 'Concepto', width: 145 },
+      { key: 'status', label: 'Estado', width: 85, format: (v) => this.traducirEstado(v) },
+      { key: 'createdAt', label: 'Fecha', width: 85, format: (v) => this.formatDate(v) },
     ],
     solicitudes: [
-      { key: 'id', label: 'ID', width: 35 },
-      { key: 'titulo', label: 'Título', width: 120 },
-      { key: 'estado', label: 'Estado', width: 80 },
-      { key: 'estadoContadora', label: 'Contadora', width: 90 },
-      { key: 'estadoDirector', label: 'Director', width: 90 },
-      { key: 'createdAt', label: 'Creada', width: 80, format: (v) => this.formatDate(v) },
+      { key: 'id', label: 'ID', width: 30 },
+      { key: 'titulo', label: 'Título', width: 130 },
+      { key: 'estado', label: 'Estado general', width: 85, format: (v) => this.traducirEstado(v) },
+      { key: 'estadoContadora', label: 'Contadora', width: 85, format: (v) => this.traducirEstado(v) },
+      { key: 'estadoDirector', label: 'Director', width: 85, format: (v) => this.traducirEstado(v) },
+      { key: 'createdAt', label: 'Fecha', width: 80, format: (v) => this.formatDate(v) },
     ],
     collaborators: [
       { key: 'id', label: 'ID', width: 30 },
-      { key: 'nombreCompleto', label: 'Nombre completo', width: 140 },
-      { key: 'correo', label: 'Correo', width: 130 },
+      { key: 'nombreCompleto', label: 'Nombre completo', width: 145 },
+      { key: 'correo', label: 'Correo electrónico', width: 145 },
       { key: 'cedula', label: 'Cédula', width: 80 },
       { key: 'telefono', label: 'Teléfono', width: 80 },
     ],
     volunteers: [
       { key: 'id', label: 'ID', width: 30 },
-      { key: 'tipoDocumento', label: 'Tipo documento', width: 110 },
-      { key: 'numeroDocumento', label: 'Número documento', width: 120 },
-      { key: 'nombreCompleto', label: 'Nombre completo', width: 130 },
-      { key: 'email', label: 'Email', width: 150 },
-      { key: 'telefono', label: 'Teléfono', width: 90 },
+      { key: 'tipoDocumento', label: 'Tipo doc.', width: 80 },
+      { key: 'numeroDocumento', label: 'N° documento', width: 100 },
+      { key: 'nombreCompleto', label: 'Nombre completo', width: 145 },
+      { key: 'email', label: 'Email', width: 140 },
+      { key: 'telefono', label: 'Teléfono', width: 80 },
     ],
     programas: [
-      { key: 'id', label: 'ID', width: 35 },
-      { key: 'nombre', label: 'Nombre', width: 130 },
+      { key: 'id', label: 'ID', width: 30 },
+      { key: 'nombre', label: 'Nombre del programa', width: 145 },
       { key: 'lugar', label: 'Lugar', width: 100 },
-      { key: 'limiteParticipantes', label: 'Cupo máx.', width: 75 },
+      { key: 'limiteParticipantes', label: 'Cupo máx.', width: 70 },
       { key: 'totalVoluntarios', label: 'Voluntarios', width: 80 },
       { key: 'totalHoras', label: 'Horas totales', width: 80 },
     ],
     sanciones: [
-      { key: 'id', label: 'ID', width: 35 },
+      { key: 'id', label: 'ID', width: 30 },
       { key: 'tipo', label: 'Tipo', width: 80 },
       { key: 'motivo', label: 'Motivo', width: 130 },
-      { key: 'descripcion', label: 'Descripción', width: 160 },
-      { key: 'createdAt', label: 'Fecha', width: 75, format: (v) => this.formatDate(v) },
+      { key: 'descripcion', label: 'Descripción', width: 200 },
+      { key: 'createdAt', label: 'Fecha', width: 80, format: (v) => this.formatDate(v) },
     ],
     contabilidad: [
-      { key: 'id', label: 'ID', width: 35 },
-      { key: 'tipo', label: 'Tipo', width: 80 },
-      { key: 'monto', label: 'Monto', width: 110, format: (v) => this.formatMoney(v) },
       { key: 'fecha', label: 'Fecha', width: 80, format: (v) => this.formatDate(v) },
-      { key: 'descripcion', label: 'Descripción', width: 160 },
+      { key: 'tipo', label: 'Tipo', width: 65 },
+      { key: 'categoria', label: 'Categoría', width: 100 },
+      { key: 'proyectoNombre', label: 'Proyecto / Programa', width: 120 },
+      { key: 'moneda', label: 'Moneda', width: 55 },
+      { key: 'monto', label: 'Monto', width: 100, format: (v, row) => this.formatMoney(v, row?.moneda) },
+      { key: 'descripcion', label: 'Descripción', width: 130 },
     ],
     visitaciones: [
-      { key: 'id', label: 'ID', width: 35 },
+      { key: 'id', label: 'ID', width: 30 },
       { key: 'fecha', label: 'Fecha', width: 90, format: (v) => this.formatDate(v) },
-      { key: 'totalPersonas', label: 'Total Personas', width: 100 },
-      { key: 'nacionales', label: 'Nacionales', width: 90 },
-      { key: 'extranjeros', label: 'Extranjeros', width: 90 },
-      { key: 'notas', label: 'Notas', width: 110 },
+      { key: 'totalPersonas', label: 'Total personas', width: 95 },
+      { key: 'nacionales', label: 'Nacionales', width: 85 },
+      { key: 'extranjeros', label: 'Extranjeros', width: 85 },
+      { key: 'notas', label: 'Notas', width: 150 },
     ],
     areas: [
-      { key: 'id', label: 'ID', width: 35 },
-      { key: 'nombre', label: 'Nombre', width: 160 },
+      { key: 'id', label: 'ID', width: 30 },
+      { key: 'nombre', label: 'Nombre del área', width: 155 },
       { key: 'descripcion', label: 'Descripción', width: 210 },
-      { key: 'activa', label: 'Activa', width: 60, format: (v) => (v ? 'Sí' : 'No') },
-      { key: 'createdAt', label: 'Creada', width: 75, format: (v) => this.formatDate(v) },
+      { key: 'activa', label: 'Activa', width: 55, format: (v) => (v ? 'Sí' : 'No') },
+      { key: 'createdAt', label: 'Fecha creación', width: 80, format: (v) => this.formatDate(v) },
     ],
   };
 
@@ -321,67 +370,120 @@ export class ReportesService {
     if (primerModulo) {
       doc.addPage();
       primerModulo = false;
-    } else if (doc.y > doc.page.height - 150) {
+    } else if (doc.y > doc.page.height - 160) {
       doc.addPage();
     }
 
-    const nombreModulo =
-      modulo === 'projects' ? 'PROYECTOS'
-      : modulo === 'billing' ? 'FACTURACIÓN'
-      : modulo === 'collaborators' ? 'COLABORADORES'
-      : modulo === 'volunteers' ? 'VOLUNTARIOS'
-      : modulo === 'solicitudes' ? 'SOLICITUDES'
-      : modulo === 'programas' ? 'PROGRAMAS DE VOLUNTARIADO'
-      : modulo === 'sanciones' ? 'SANCIONES'
-      : modulo === 'contabilidad' ? 'CONTABILIDAD'
-      : modulo === 'visitaciones' ? 'VISITACIÓN'
-      : modulo === 'areas' ? 'ÁREAS'
-      : modulo.toUpperCase();
+    const nombreModulo = this.labelModulo(modulo).toUpperCase();
 
-    doc.moveDown(1.2);
-    doc.fontSize(14).fillColor('#003366').text(nombreModulo, 65, doc.y, {
-      underline: true,
-      align: 'left',
-      width: 470,
-    }).moveDown(0.6);
+    doc.moveDown(1);
+    doc.fontSize(13).fillColor(BRAND).font('Helvetica-Bold')
+      .text(nombreModulo, MARGIN, doc.y, { underline: true, width: PAGE_W - MARGIN * 2 });
+    doc.moveDown(0.4);
+    doc.fontSize(9).fillColor('#555').font('Helvetica')
+      .text(`Total de registros en este módulo: ${items.length}`, MARGIN);
+    doc.moveDown(0.5);
+
+    // Resumen financiero para Contabilidad
+    if (modulo === 'contabilidad') {
+      this.drawContabilidadSummary(doc, items, MARGIN, PAGE_W);
+      doc.moveDown(0.8);
+    }
 
     const cols =
       config[modulo] ??
       Object.keys(items[0] || {})
-        .slice(0, 6)
-        .map((k) => ({ key: k, label: k.toUpperCase(), width: 80 }));
+        .filter((k) => !['project', 'montoNum'].includes(k))
+        .slice(0, 7)
+        .map((k) => ({ key: k, label: k.toUpperCase(), width: 70 }));
 
     this.drawTableStable(doc, cols, items);
-    doc.moveDown(0.8);
-    doc.moveTo(65, doc.y).lineTo(530, doc.y).strokeColor('#cccccc').stroke();
+    doc.moveDown(1);
+    doc.moveTo(MARGIN, doc.y).lineTo(PAGE_W - MARGIN, doc.y).strokeColor('#cccccc').lineWidth(0.5).stroke();
   }
 
-        // ===== PIE DE PÁGINA =====
+  // ===== PIE DE PÁGINA =====
   const pageRange = doc.bufferedPageRange();
   for (let i = 0; i < pageRange.count; i++) {
     doc.switchToPage(i);
-    const bottomY = doc.page.height - 50;
-    doc.fontSize(9).fillColor('gray')
-      .text('FUNDECODES DIGITAL – Sistema Administrativo', 0, bottomY, { align: 'center' });
-    doc.text(`Página ${i + 1} de ${pageRange.count}`, 0, bottomY + 12, { align: 'center' });
+    const bottomY = doc.page.height - 38;
+    // Línea separadora
+    doc.moveTo(MARGIN, bottomY - 6).lineTo(PAGE_W - MARGIN, bottomY - 6)
+      .strokeColor('#cccccc').lineWidth(0.4).stroke();
+    doc.fontSize(8).fillColor('gray').font('Helvetica')
+      .text('FUNDECODES DIGITAL – Sistema Administrativo · Documento de uso institucional',
+        MARGIN, bottomY, { width: PAGE_W - MARGIN * 2 - 80 });
+    doc.text(`Página ${i + 1} de ${pageRange.count}`,
+      PAGE_W - MARGIN - 80, bottomY, { width: 80, align: 'right' });
   }
 
-  // 🧹 Cierre limpio sin páginas vacías
   doc.end();
-
   await new Promise((resolve) => doc.on('end', resolve));
-  const finalBuffer = Buffer.concat(buffers);
+  return Buffer.concat(buffers);
+}
 
-  // 🧩 Eliminar páginas vacías detectando secciones sin texto visible
-  const pdfStr = finalBuffer.toString('latin1');
-  const cleaned = pdfStr
-    // elimina páginas vacías con sólo pie o resources
-    .replace(/\/Type\s*\/Page[\s\S]{0,600}?(?=(?:\/Type\s*\/Page)|%%EOF)/g, (match) => {
-      const noText = !/Tj|TJ|Tf|Td/.test(match); // no hay texto real
-      return noText ? '' : match;
-    });
+private drawContabilidadSummary(doc: PDFKit.PDFDocument, items: any[], margin: number, pageW: number): void {
+  const BRAND = '#003366';
+  let totalIngresos = 0;
+  let totalEgresos = 0;
 
-  return Buffer.from(cleaned, 'latin1');
+  for (const tx of items) {
+    const monto = Number(tx.montoNum ?? tx.monto ?? 0);
+    if (String(tx.tipo).toUpperCase() === 'INGRESO') totalIngresos += monto;
+    else totalEgresos += monto;
+  }
+
+  const balance = totalIngresos - totalEgresos;
+  const balanceColor = balance >= 0 ? '#1a7a3b' : '#cc2200';
+
+  // Fondo del resumen
+  const boxH = 48;
+  const boxY = doc.y;
+  doc.save().rect(margin, boxY, pageW - margin * 2, boxH).fill('#eef3fa').restore();
+  doc.save().rect(margin, boxY, 4, boxH).fill(BRAND).restore();
+
+  doc.font('Helvetica-Bold').fontSize(10).fillColor(BRAND)
+    .text('Resumen Financiero del Período', margin + 10, boxY + 6);
+
+  const colW = (pageW - margin * 2 - 14) / 3;
+  const labelY = boxY + 20;
+  const valY = boxY + 31;
+
+  // Ingresos
+  doc.font('Helvetica').fontSize(8).fillColor('#555')
+    .text('Total Ingresos', margin + 10, labelY, { width: colW });
+  doc.font('Helvetica-Bold').fontSize(10).fillColor('#1a7a3b')
+    .text(this.formatMoney(totalIngresos, 'CRC'), margin + 10, valY, { width: colW });
+
+  // Egresos
+  doc.font('Helvetica').fontSize(8).fillColor('#555')
+    .text('Total Egresos', margin + 10 + colW, labelY, { width: colW });
+  doc.font('Helvetica-Bold').fontSize(10).fillColor('#cc2200')
+    .text(this.formatMoney(totalEgresos, 'CRC'), margin + 10 + colW, valY, { width: colW });
+
+  // Balance
+  doc.font('Helvetica').fontSize(8).fillColor('#555')
+    .text('Balance Neto', margin + 10 + colW * 2, labelY, { width: colW });
+  doc.font('Helvetica-Bold').fontSize(10).fillColor(balanceColor)
+    .text(this.formatMoney(balance, 'CRC'), margin + 10 + colW * 2, valY, { width: colW });
+
+  doc.y = boxY + boxH + 6;
+}
+
+private labelModulo(modulo: string): string {
+  const map: Record<string, string> = {
+    projects: 'Proyectos',
+    billing: 'Facturación',
+    collaborators: 'Colaboradores',
+    volunteers: 'Voluntarios',
+    solicitudes: 'Solicitudes de compra',
+    programas: 'Programas de voluntariado',
+    sanciones: 'Sanciones disciplinarias',
+    contabilidad: 'Contabilidad (transacciones)',
+    visitaciones: 'Visitación',
+    areas: 'Áreas de trabajo',
+  };
+  return map[modulo] ?? (modulo.charAt(0).toUpperCase() + modulo.slice(1));
 }
 
 
@@ -392,14 +494,16 @@ export class ReportesService {
 
   private drawTableStable(
   doc: PDFKit.PDFDocument,
-  columns: { key: string; label: string; width: number; format?: (v: any) => string }[],
+  columns: { key: string; label: string; width: number; format?: (v: any, row?: any) => string }[],
   rows: any[],
 ) {
   const pageWidth = doc.page.width;
-  const pageMargin = 65;
-  const maxTableWidth = 500;
-  const headerHeight = 24;
-  const baseRowHeight = 24;
+  const pageMargin = 55;
+  const maxTableWidth = 485;
+  const headerHeight = 28;
+  const baseRowHeight = 28;
+  const cellPadX = 7;
+  const cellPadY = 7;
   const marginBottom = 70;
   const maxY = doc.page.height - marginBottom;
   let y = doc.y;
@@ -407,22 +511,26 @@ export class ReportesService {
   let totalWidth = columns.reduce((sum, c) => sum + c.width, 0);
   if (totalWidth > maxTableWidth) {
     const scale = maxTableWidth / totalWidth;
-    columns = columns.map((c) => ({ ...c, width: c.width * scale }));
-    totalWidth = maxTableWidth;
+    columns = columns.map((c) => ({ ...c, width: Math.floor(c.width * scale) }));
+    totalWidth = columns.reduce((sum, c) => sum + c.width, 0);
   }
 
   const startX = Math.max((pageWidth - totalWidth) / 2, pageMargin);
 
   const drawHeader = () => {
     doc.save().rect(startX, y, totalWidth, headerHeight).fill('#dbe8f5').restore();
-    let x = startX + 8;
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('#003366');
+    // Borde inferior del encabezado
+    doc.moveTo(startX, y + headerHeight).lineTo(startX + totalWidth, y + headerHeight)
+      .strokeColor('#003366').lineWidth(0.8).stroke();
+    let x = startX + cellPadX;
+    doc.font('Helvetica-Bold').fontSize(9).fillColor('#003366');
     for (const col of columns) {
-      const labelY = y + (headerHeight - doc.heightOfString(col.label, { width: col.width - 10 })) / 2 - 1;
-      doc.text(col.label, x, labelY, { width: col.width - 10, align: 'left' });
+      const labelH = doc.heightOfString(col.label, { width: col.width - cellPadX * 2 });
+      const labelY = y + (headerHeight - labelH) / 2;
+      doc.text(col.label, x, labelY, { width: col.width - cellPadX * 2, align: 'left' });
       x += col.width;
     }
-    y += headerHeight + 6;
+    y += headerHeight;
   };
 
   drawHeader();
@@ -432,42 +540,45 @@ export class ReportesService {
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     const heights = columns.map((col) => {
-      const val = col.format ? col.format(row[col.key]) : this.stringifyValue(row[col.key]);
-      return Math.max(doc.heightOfString(val, { width: col.width - 10 }) + 8, baseRowHeight);
+      const val = col.format ? col.format(row[col.key], row) : this.stringifyValue(row[col.key]);
+      return Math.max(
+        doc.heightOfString(val, { width: col.width - cellPadX * 2 }) + cellPadY * 2,
+        baseRowHeight
+      );
     });
     const rowHeight = Math.max(...heights);
 
-    // 🔹 Evitar agregar páginas vacías
-    const isLastRow = i === rows.length - 1;
-    if (y + rowHeight > maxY && !isLastRow) {
+    if (y + rowHeight > maxY) {
       doc.addPage();
       y = 70;
       drawHeader();
     }
 
     // Fondo alternado
-    if (i % 2 === 1) doc.save().rect(startX, y, totalWidth, rowHeight).fill('#f7f9fb').restore();
+    if (i % 2 === 1) {
+      doc.save().rect(startX, y, totalWidth, rowHeight).fill('#f7f9fb').restore();
+    }
 
-    let x = startX + 8;
+    let x = startX + cellPadX;
     for (const col of columns) {
-      const val = col.format ? col.format(row[col.key]) : this.stringifyValue(row[col.key]);
-      doc.fillColor('#000').text(val, x, y + 5, {
-        width: col.width - 10,
+      const val = col.format ? col.format(row[col.key], row) : this.stringifyValue(row[col.key]);
+      doc.fillColor('#222').text(val, x, y + cellPadY, {
+        width: col.width - cellPadX * 2,
         align: 'left',
         lineBreak: true,
       });
       x += col.width;
     }
 
+    // Línea separadora de fila
     doc.moveTo(startX, y + rowHeight)
       .lineTo(startX + totalWidth, y + rowHeight)
-      .strokeColor('#e0e0e0')
-      .stroke();
+      .strokeColor('#e0e0e0').lineWidth(0.3).stroke();
 
     y += rowHeight;
   }
 
-  doc.y = Math.min(y + 12, maxY - 10);
+  doc.y = Math.min(y + 10, maxY - 10);
 }
 
 async generarExcel(data: any): Promise<Buffer> {
@@ -615,10 +726,12 @@ async generarExcel(data: any): Promise<Buffer> {
       ];
     } else if (modulo === 'contabilidad') {
       columnas = [
-        { key: 'id', label: 'ID' },
-        { key: 'tipo', label: 'Tipo' },
-        { key: 'monto', label: 'Monto' },
         { key: 'fecha', label: 'Fecha' },
+        { key: 'tipo', label: 'Tipo' },
+        { key: 'categoria', label: 'Categoría' },
+        { key: 'proyectoNombre', label: 'Proyecto / Programa' },
+        { key: 'moneda', label: 'Moneda' },
+        { key: 'monto', label: 'Monto' },
         { key: 'descripcion', label: 'Descripción' },
       ];
     } else if (modulo === 'visitaciones') {
@@ -721,10 +834,11 @@ async generarExcel(data: any): Promise<Buffer> {
     if (v == null) return '-';
     const n = typeof v === 'object' && 'toNumber' in v ? (v as any).toNumber() : Number(v);
     if (isNaN(n)) return String(v);
-    const curr = currency?.toUpperCase() ?? (n <= 10000 ? 'USD' : 'CRC');
-    const locale = curr === 'USD' ? 'en-US' : 'es-CR';
+    const curr = (currency ?? '').toUpperCase() || (n >= 10000 ? 'CRC' : 'USD');
+    const locale = curr === 'USD' ? 'en-US' : curr === 'EUR' ? 'es-ES' : 'es-CR';
+    const symbol = curr === 'USD' ? '$' : curr === 'EUR' ? '€' : '₡';
     const formatted = n.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    return `${curr} ${formatted}`;
+    return `${symbol} ${formatted} ${curr}`;
   }
 
   private stringifyValue(v: any): string {
