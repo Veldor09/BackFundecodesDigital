@@ -144,7 +144,7 @@ export class ReportesService {
         // Agregar nombre del proyecto como campo plano para el PDF
         return txs.map((t) => ({
           ...t,
-          proyectoNombre: (t as any).project?.title ?? t.programa ?? '-',
+          proyectoNombre: (t as any).project?.title ?? (t as any).proyecto ?? '-',
           montoNum: typeof t.monto === 'object' && 'toNumber' in (t.monto as any)
             ? (t.monto as any).toNumber()
             : Number(t.monto ?? 0),
