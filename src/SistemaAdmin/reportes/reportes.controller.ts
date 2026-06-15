@@ -1,6 +1,8 @@
 import {
+  Body,
   Controller,
   Get,
+  Post,
   Query,
   Res,
   BadRequestException,
@@ -213,6 +215,42 @@ export class ReportesController {
       throw new BadRequestException(
         'Error interno del servidor al exportar el informe.',
       );
+    }
+  }
+
+  /* ============================================================
+     📄 Exportar selección actual (datos enviados desde el frontend)
+  ============================================================ */
+  @Post('exportar-seleccion')
+  async exportarSeleccion(
+    @Body() body: { modulo: string; datos: any[]; formato?: string },
+    @Res() res: Response,
+  ) {
+    try {
+      const { modulo, datos, formato = 'pdf' } = body;
+      if (!modulo || !Array.isArray(datos)) {
+        throw new BadRequestException('Se requieren modulo y datos[]');
+      }
+      const buffer = await this.reportesService.generarReporteSeleccion(modulo, datos, formato);
+      const today = new Date().toISOString().split('T')[0];
+
+      if (['xlsx', 'excel', 'xls'].includes(formato.toLowerCase())) {
+        res.set({
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'Content-Disposition': `attachment; filename="seleccion-${modulo}-${today}.xlsx"`,
+          'Content-Length': buffer.length,
+        });
+      } else {
+        res.set({
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `attachment; filename="seleccion-${modulo}-${today}.pdf"`,
+          'Content-Length': buffer.length,
+        });
+      }
+      return res.end(buffer);
+    } catch (error) {
+      console.error('❌ Error al exportar selección:', error);
+      throw new BadRequestException('Error al exportar la selección actual.');
     }
   }
 }

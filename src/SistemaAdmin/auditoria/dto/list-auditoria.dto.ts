@@ -11,12 +11,12 @@ export class ListAuditoriaDto {
   @Min(1)
   page?: number;
 
-  @ApiPropertyOptional({ default: 50, minimum: 1, maximum: 200 })
+  @ApiPropertyOptional({ default: 50, minimum: 1, maximum: 10000 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(200)
+  @Max(10000)
   pageSize?: number;
 
   @ApiPropertyOptional({ description: 'ID del usuario actor' })

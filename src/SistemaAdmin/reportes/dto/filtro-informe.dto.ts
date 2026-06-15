@@ -56,4 +56,11 @@ export class FiltroInformeDto {
   })
   @IsOptional()
   formato?: string;
+
+  @ApiPropertyOptional({
+    description: 'ID de cuenta específica (solo para módulo contabilidad)',
+    example: 3,
+  })
+  @IsOptional()
+  cuentaId?: number;
 }
