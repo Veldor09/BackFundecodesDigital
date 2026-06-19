@@ -1,98 +1,106 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+```markdown
+# FUNDECODES Digital — Backend
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+API REST del sistema de gestión interna de FUNDECODES, desarrollada con NestJS, Prisma y PostgreSQL.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Requisitos previos
 
-## Description
+- Node.js v18 o superior
+- npm v9 o superior
+- PostgreSQL 14 o superior
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Variables de entorno
 
-## Project setup
+Crear un archivo `.env` en la raíz del proyecto con las siguientes variables:
 
-```bash
-$ npm install
+```env
+DATABASE_URL="postgresql://USUARIO:CONTRASEÑA@localhost:5432/fundecodes"
+JWT_SECRET="clave_secreta_segura"
+PORT=3001
+FRONTEND_URL="http://localhost:3000"
 ```
 
-## Compile and run the project
+## Instalación
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+npm install
 ```
 
-## Run tests
+## Base de datos
+
+Ejecutar las migraciones de Prisma para crear las tablas en la base de datos:
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npx prisma migrate deploy
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+Para visualizar y administrar la base de datos en modo de desarrollo:
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npx prisma studio
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+## Ejecutar el proyecto
 
-## Resources
+```bash
+# Modo desarrollo
+npm run start:dev
 
-Check out a few resources that may come in handy when working with NestJS:
+# Modo producción
+npm run start:prod
+```
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+La API quedará disponible en `http://localhost:3001`.
 
-## Support
+## Módulos del sistema
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+| Módulo | Descripción |
+|---|---|
+| Auth | Autenticación con JWT, recuperación de contraseña |
+| Users | Gestión de usuarios e invitaciones |
+| Roles | Roles y permisos del sistema |
+| Volunteer | Registro y gestión de voluntarios |
+| Sanciones | Registro de sanciones a voluntarios |
+| ProgramaVoluntariado | Programas de voluntariado y asignaciones |
+| Collaborator | Colaboradores externos y asignación a proyectos |
+| Projects | Proyectos con imágenes, documentos y estado |
+| Areas | Áreas organizacionales |
+| Billing | Solicitudes de facturación y pagos |
+| Contabilidad | Cuentas, transacciones, presupuestos y documentos |
+| Cuentas | Cuentas contables vinculadas a proyectos |
+| Visitaciones | Registro de visitas externas |
+| Auditoria | Registro automático de acciones del sistema |
+| Reportes | Generación de reportes en PDF y Excel |
+| Dashboard | Métricas generales del sistema |
+| Files | Carga y gestión de archivos adjuntos |
 
-## Stay in touch
+## Estructura del proyecto
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+```
+src/
+├── auth/                  # Autenticación y autorización
+├── SistemaAdmin/          # Módulos administrativos
+│   ├── users/
+│   ├── roles/
+│   ├── Volunteer/
+│   ├── sanciones/
+│   ├── ProgramaVoluntariado/
+│   ├── collaborator/
+│   ├── projects/
+│   ├── areas/
+│   ├── billing/
+│   ├── solicitudes/
+│   ├── contabilidad/
+│   ├── cuentas/
+│   ├── visitaciones/
+│   ├── auditoria/
+│   ├── reportes/
+│   ├── dashboard/
+│   └── files/
+└── main.ts
+```
 
-## License
+## Equipo
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+Proyecto desarrollado para FUNDECODES — Universidad Nacional de Costa Rica, Sede Regional Chorotega, Campus Nicoya.
+```
