@@ -67,11 +67,11 @@ La API quedará disponible en `http://localhost:3001`.
 | Areas | Áreas organizacionales |
 | Billing | Solicitudes de facturación y pagos |
 | Contabilidad | Cuentas, transacciones, presupuestos y documentos |
-| Cuentas | Cuentas contables vinculadas a proyectos |
+| Cuentas | Cuentas contables vinculadas a áreas |
 | Visitaciones | Registro de visitas externas |
 | Auditoria | Registro automático de acciones del sistema |
 | Reportes | Generación de reportes en PDF y Excel |
-| Dashboard | Métricas generales del sistema |
+| Dashboard | Cards generales del sistema |
 | Files | Carga y gestión de archivos adjuntos |
 
 ## Estructura del proyecto
