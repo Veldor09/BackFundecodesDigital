@@ -26,6 +26,7 @@ export class VisitacionesService {
         totalPersonas: dto.totalPersonas,
         nacionales: dto.nacionales,
         extranjeros: ext,
+        paisesExtranjeros: dto.paisesExtranjeros ?? null,
         notas: dto.notas ?? null,
       },
     });
@@ -81,6 +82,7 @@ export class VisitacionesService {
         ...(dto.totalPersonas != null ? { totalPersonas: dto.totalPersonas } : {}),
         ...(dto.nacionales    != null ? { nacionales: dto.nacionales }       : {}),
         extranjeros: ext,
+        ...(dto.paisesExtranjeros !== undefined ? { paisesExtranjeros: dto.paisesExtranjeros ?? null } : {}),
         ...(dto.notas         !== undefined ? { notas: dto.notas ?? null }   : {}),
       },
     });

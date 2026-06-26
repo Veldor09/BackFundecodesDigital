@@ -848,14 +848,15 @@ model RespuestaFormulario {
 
 // ===== Visitacion — registro de visitas al parque / sede =====
 model Visitacion {
-  id            Int      @id @default(autoincrement())
-  fecha         DateTime @db.Date
-  totalPersonas Int      @map("total_personas")
-  nacionales    Int
-  extranjeros   Int
-  notas         String?
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  id                 Int      @id @default(autoincrement())
+  fecha              DateTime @db.Date
+  totalPersonas      Int      @map("total_personas")
+  nacionales         Int
+  extranjeros        Int
+  paisesExtranjeros  Json?    @map("paises_extranjeros")
+  notas              String?
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
 
   @@index([fecha])
   @@map("visitacion")

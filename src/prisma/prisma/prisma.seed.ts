@@ -13,26 +13,26 @@ async function main() {
   console.log('🌱 Sembrando roles, permisos y usuario admin…')
 
   const MODULE_PERMS = [
-    { key: 'voluntario:access',   description: 'Acceso al módulo de Voluntariado' },
-    { key: 'sanciones:access',    description: 'Acceso al módulo de Sanciones' },
-    { key: 'projects:access',     description: 'Acceso al módulo de Proyectos' },
-    { key: 'programas:access',    description: 'Acceso al módulo de Programas' },
-    { key: 'solicitudes:access',  description: 'Acceso al módulo de Solicitudes' },
-    { key: 'facturas:access',     description: 'Acceso al módulo de Facturas' },
-    { key: 'contabilidad:access', description: 'Acceso al módulo de Contabilidad' },
-    { key: 'cuentas:access',      description: 'Acceso a las cuentas contables' },
-    { key: 'programavoluntariado:access', description: 'Acceso al módulo de Programa Voluntariado' },
-    { key: 'reportes:access',     description: 'Acceso al módulo de Reportes' },
-    { key: 'visitaciones:access', description: 'Acceso al módulo de Visitaciones' },
+    { key: 'voluntario:access',          description: 'Acceso al módulo de Voluntariado' },
+    { key: 'sanciones:access',           description: 'Acceso al módulo de Sanciones' },
+    { key: 'projects:access',            description: 'Acceso al módulo de Proyectos' },
+    { key: 'programas:access',           description: 'Acceso al módulo de Programas' },
+    { key: 'solicitudes:access',         description: 'Acceso al módulo de Solicitudes' },
+    { key: 'facturas:access',            description: 'Acceso al módulo de Facturas' },
+    { key: 'contabilidad:access',        description: 'Acceso al módulo de Contabilidad' },
+    { key: 'cuentas:access',             description: 'Acceso a las cuentas contables' },
+    { key: 'programavoluntariado:access',description: 'Acceso al módulo de Programa Voluntariado' },
+    { key: 'reportes:access',            description: 'Acceso al módulo de Reportes' },
+    { key: 'visitaciones:access',        description: 'Acceso al módulo de Visitaciones' },
   ]
   const MANAGE_PERMS = [
-    { key: 'users.manage',         description: 'Gestionar usuarios' },
-    { key: 'roles.manage',         description: 'Gestionar roles y permisos' },
-    { key: 'projects.manage',      description: 'Gestionar proyectos' },
-    { key: 'programas.manage',     description: 'Gestionar programas' },
-    { key: 'cuentas.manage',       description: 'Gestionar cuentas contables' },
-    { key: 'asignaciones.manage',  description: 'Asignar proyectos/programas a colaboradores' },
-    { key: 'news.manage',          description: 'Gestionar noticias' },
+    { key: 'users.manage',        description: 'Gestionar usuarios' },
+    { key: 'roles.manage',        description: 'Gestionar roles y permisos' },
+    { key: 'projects.manage',     description: 'Gestionar proyectos' },
+    { key: 'programas.manage',    description: 'Gestionar programas' },
+    { key: 'cuentas.manage',      description: 'Gestionar cuentas contables' },
+    { key: 'asignaciones.manage', description: 'Asignar proyectos/programas a colaboradores' },
+    { key: 'news.manage',         description: 'Gestionar noticias' },
   ]
   const ALL_PERMS = [...MODULE_PERMS, ...MANAGE_PERMS]
 
@@ -44,38 +44,53 @@ async function main() {
     })
   }
 
-  // NOTA: las claves de roles deben coincidir con el enum ColaboradorRol de Prisma.
-  // colaboradorproyecto ahora gestiona tanto proyectos como programas (el módulo
-  // se llama "Proyectos y Programas").
+  // Claves de roles deben coincidir con el enum ColaboradorRol del schema de Prisma.
   const ROLE_TO_PERMS: Record<string, string[]> = {
+    // ── Internos ────────────────────────────────────────────────────────────────
     admin: ALL_PERMS.map(p => p.key),
-    voluntario: ['voluntario:access'],
-    colaboradorfacturas: [
-      'facturas:access',
-      'solicitudes:access',
-    ],
+
+    // Gestión de voluntariado: formularios, estados, sanciones y programas
     colaboradorvoluntariado: [
       'voluntario:access',
       'sanciones:access',
       'programavoluntariado:access',
     ],
+
+    // Gestión de proyectos y programas institucionales
     colaboradorproyecto: [
       'projects:access',
       'programas:access',
     ],
+
+    // Facturación: crea y gestiona solicitudes de compra en todas las etapas
+    colaboradorfactura: [
+      'facturas:access',
+      'solicitudes:access',
+    ],
+
+    // Contabilidad: solo módulo de contabilidad (ingresos, egresos, reportes)
     colaboradorcontabilidad: [
       'contabilidad:access',
       'cuentas:access',
-      'solicitudes:access',
-      'facturas:access',
     ],
-    colaboradorvoluntario: [
+
+    // Visitación: registra y consulta visitas al parque / sede
+    colaboradorvisitacion: [
+      'visitaciones:access',
+    ],
+
+    // ── Externos ────────────────────────────────────────────────────────────────
+
+    // Solicitante externo: solo puede crear solicitudes y ver su historial
+    colaboradorsolicitante: [
+      'solicitudes:access',
+    ],
+
+    // Voluntario externo: accede al módulo de voluntariado de su área
+    colaboradorvoluntariadoexterno: [
       'voluntario:access',
       'sanciones:access',
       'programavoluntariado:access',
-    ],
-    colaboradorvisitacion: [
-      'visitaciones:access',
     ],
   }
 
@@ -101,12 +116,11 @@ async function main() {
         password: hashed,
         approved: true,
         verified: true,
-        roles: { create: { roleId: adminRole.id } }, // UserRole
+        roles: { create: { roleId: adminRole.id } },
       },
     })
     console.log('✅ Usuario admin creado.')
   } else {
-    // Forzar actualización de password si está vacío o si ADMIN_FORCE_RESET=true
     if (ADMIN_FORCE_RESET || !existingAdmin.password) {
       await prisma.user.update({
         where: { id: existingAdmin.id },

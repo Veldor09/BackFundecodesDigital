@@ -1,4 +1,4 @@
-import { IsDateString, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsDateString, IsInt, IsObject, IsOptional, IsString, Min } from 'class-validator';
 
 export class CreateVisitacionDto {
   /** Fecha de la visita en formato ISO-8601 (YYYY-MM-DD) */
@@ -14,6 +14,11 @@ export class CreateVisitacionDto {
   @IsInt()
   @Min(0)
   nacionales: number;
+
+  /** Distribución de extranjeros por país: { "Costa Rica": 3, "Nicaragua": 2 } */
+  @IsOptional()
+  @IsObject()
+  paisesExtranjeros?: Record<string, number>;
 
   /** Observaciones adicionales (opcional) */
   @IsOptional()
