@@ -191,13 +191,24 @@ export class AuthService {
 
     const password = await bcrypt.hash(newPassword, BCRYPT_COST);
 
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: {
-        password,
-        verified: true,
-      },
-    });
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          password,
+          verified: true,
+        },
+      }),
+      // Mantiene sincronizada la copia del hash en Colaborador (si existe)
+      (this.prisma as any).collaborator.updateMany({
+        where: { correo: user.email },
+        data: {
+          passwordHash: password,
+          passwordUpdatedAt: new Date(),
+          tempPasswordExpiresAt: null,
+        },
+      }),
+    ]);
 
     await this.safeAuditCreate({
       userId: user.id,
@@ -297,10 +308,21 @@ export class AuthService {
 
     const password = await bcrypt.hash(newPassword, BCRYPT_COST);
 
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { password, verified: true },
-    });
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: user.id },
+        data: { password, verified: true },
+      }),
+      // Mantiene sincronizada la copia del hash en Colaborador (si existe)
+      (this.prisma as any).collaborator.updateMany({
+        where: { correo: user.email },
+        data: {
+          passwordHash: password,
+          passwordUpdatedAt: new Date(),
+          tempPasswordExpiresAt: null,
+        },
+      }),
+    ]);
 
     await this.safeAuditCreate({
       userId: user.id,

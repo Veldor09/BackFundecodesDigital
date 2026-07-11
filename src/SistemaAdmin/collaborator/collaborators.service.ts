@@ -612,24 +612,59 @@ export class CollaboratorsService {
   }
 
   /** Password temporal manual (soporte) */
-  async issueTemporaryPassword(id: number): Promise<void> {
-    const user = await this.db.collaborator.findUnique({ where: { id } });
-    if (!user) throw new NotFoundException('Colaborador no encontrado');
+  async issueTemporaryPassword(
+    id: number,
+  ): Promise<{ ok: true; tempPassword: string; expiresAt: Date }> {
+    const collaborator = await this.db.collaborator.findUnique({ where: { id } });
+    if (!collaborator) throw new NotFoundException('Colaborador no encontrado');
 
+    const correo = this.normalizeEmail(collaborator.correo);
     const tempPwd = generateStrongPassword(12);
     const passwordHash = await bcrypt.hash(tempPwd, BCRYPT_COST);
 
     const expires = new Date();
     expires.setDate(expires.getDate() + 7);
 
-    await this.db.collaborator.update({
-      where: { id },
-      data: {
-        passwordHash,
-        tempPasswordExpiresAt: expires,
-        passwordUpdatedAt: new Date(),
-      },
+    await this.prisma.$transaction(async (tx) => {
+      await (tx as any).collaborator.update({
+        where: { id },
+        data: {
+          passwordHash,
+          tempPasswordExpiresAt: expires,
+          passwordUpdatedAt: new Date(),
+        },
+      });
+
+      // El login valida contra User.password; sin esta sincronización la
+      // contraseña temporal no permite entrar al sistema.
+      await tx.user.updateMany({
+        where: { email: correo },
+        data: { password: passwordHash },
+      });
     });
+
+    // Envía la contraseña temporal por correo (no rompe si falla)
+    try {
+      const vence = expires.toISOString().slice(0, 10);
+      await this.email.sendMail({
+        to: correo,
+        subject: 'FUNDECODES — Contraseña temporal',
+        text: `Tu contraseña temporal es: ${tempPwd}\nVence el ${vence}. Te recomendamos cambiarla al ingresar.`,
+        html: `
+          <div style="font-family: Arial, sans-serif; line-height:1.6">
+            <p>Se generó una contraseña temporal para tu cuenta:</p>
+            <p style="font-size:18px"><b>${tempPwd}</b></p>
+            <p>Vence el ${vence}. Te recomendamos cambiarla al ingresar.</p>
+            <p>Si no solicitaste este cambio, contacta al administrador.</p>
+          </div>
+        `,
+      });
+    } catch (e: any) {
+      // eslint-disable-next-line no-console
+      console.warn('[COLLABORATOR.TEMP-PASSWORD] email no enviado:', e?.message || e);
+    }
+
+    return { ok: true, tempPassword: tempPwd, expiresAt: expires };
   }
 
   // =================== Asignaciones (ColaboradorAsignacion) ===================

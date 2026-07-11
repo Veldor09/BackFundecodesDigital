@@ -306,8 +306,11 @@ export class CollaboratorsController {
 
   // ---------- ISSUE TEMP PASSWORD ----------
   @Patch(':id/issue-temp-password')
-  @HttpCode(204)
-  @ApiOperation({ summary: 'Emitir contraseña temporal' })
+  @ApiOperation({
+    summary: 'Emitir contraseña temporal',
+    description:
+      'Actualiza la credencial de login (User.password), envía la contraseña temporal por correo y la retorna en la respuesta.',
+  })
   @Audit({
     accion: 'COLABORADOR_PASS_TEMPORAL',
     entidad: 'Colaborador',
@@ -315,8 +318,7 @@ export class CollaboratorsController {
       `Emitió contraseña temporal para colaborador #${params.id}.`,
   })
   async issueTempPassword(@Param('id', ParseIntPipe) id: number) {
-    await this.service.issueTemporaryPassword(id);
-    return; // 204
+    return this.service.issueTemporaryPassword(id);
   }
 
   // ---------- DELETE ----------
